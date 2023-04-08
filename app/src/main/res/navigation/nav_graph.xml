@@ -14,6 +14,9 @@
         <action
             android:id="@+id/action_FirstFragment_to_SecondFragment"
             app:destination="@id/SecondFragment" />
+        <action
+            android:id="@+id/action_FirstFragment_to_connectivityConfiguration"
+            app:destination="@id/connectivityConfiguration" />
     </fragment>
     <fragment
         android:id="@+id/SecondFragment"
@@ -24,5 +27,17 @@
         <action
             android:id="@+id/action_SecondFragment_to_FirstFragment"
             app:destination="@id/FirstFragment" />
+    </fragment>
+    <fragment
+        android:id="@+id/connectivityConfiguration"
+        android:name="com.example.lbs_app_for_poc.ConnectivityConfiguration"
+        android:label="fragment_connectivity_configuration"
+        tools:layout="@layout/fragment_connectivity_configuration" >
+        <action
+            android:id="@+id/action_connectivityConfiguration_to_FirstFragment"
+            app:destination="@id/FirstFragment" />
+        <action
+            android:id="@+id/action_connectivityConfiguration_to_SecondFragment"
+            app:destination="@id/SecondFragment" />
     </fragment>
 </navigation>

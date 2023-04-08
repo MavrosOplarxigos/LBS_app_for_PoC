@@ -31,6 +31,8 @@ public class FirstFragment extends Fragment {
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        Button search_initiator_button = view.findViewById(R.id.button_first);
+        search_initiator_button.setText("Search Initiator Node");
         binding.buttonFirst.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
@@ -39,15 +41,26 @@ public class FirstFragment extends Fragment {
             }
         });
 
-        Button search_initiator_button = view.findViewById(R.id.button_first);
-        search_initiator_button.setText("Search Initiator Node");
-
         Button proxy_node_button = view.findViewById(R.id.proxy_node_button);
         proxy_node_button.setText("Proxy Node");
 
-        view.setBackgroundColor(Color.GREEN);
+        Button configure_button = view.findViewById(R.id.configure_button);
+        configure_button.setText("Configure");
+        binding.configureButton.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        //Bundle bundle = new Bundle();
+                        //bundle.putString("caller_fragment","main");
+                        //NavHostFragment.findNavController(FirstFragment.this)
+                        //               .navigate(R.id.action_FirstFragment_to_connectivityConfiguration,bundle);
+                        NavHostFragment.findNavController(FirstFragment.this)
+                                .navigate(R.id.action_FirstFragment_to_connectivityConfiguration);
+                    }
+                }
+        );
 
-
+        view.setBackgroundColor(Color.DKGRAY);
 
     }
 
