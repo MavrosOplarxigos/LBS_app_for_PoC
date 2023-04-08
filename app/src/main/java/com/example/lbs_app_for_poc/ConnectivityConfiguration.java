@@ -1,5 +1,6 @@
 package com.example.lbs_app_for_poc;
 
+import android.net.InetAddresses;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
@@ -14,7 +15,9 @@ import android.widget.TextView;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
+import java.net.UnknownHostException;
 import java.util.Collections;
 import java.util.List;
 
@@ -22,6 +25,7 @@ public class ConnectivityConfiguration extends Fragment {
 
     // public String caller_fragment;
     public InetAddress my_ip_address = null;
+    public InetAddress my_peer_ip_address = null;
 
     public ConnectivityConfiguration() {
         // Required empty public constructor
@@ -57,6 +61,7 @@ public class ConnectivityConfiguration extends Fragment {
                 if(addr.toString().contains(":")){
                     // then it should be a MAC address
                     // TODO: find a better way to check if an address is a MAC-ADDRESS
+                    continue;
                 }
                 else {
                     Log.d("NET CONFIG", "IP address found for wlan0 " + addr.toString());
@@ -76,6 +81,18 @@ public class ConnectivityConfiguration extends Fragment {
         }
 
         // Displaying peer's IP address (configure the initial one)
+
+        // if it's null we fill it in
+        if(my_peer_ip_address == null){
+            try {
+                my_peer_ip_address = InetAddress.getByName("127.0.0.1");
+            } catch (UnknownHostException e) {
+                Log.d("NET CONFIG","Peer address not found from given name!");
+                throw new RuntimeException(e);
+            }
+        }
+        TextView my_peer_ip_address_TV = (TextView) view.findViewById(R.id.peerIPaddress_value);
+        my_peer_ip_address_TV.setText(my_peer_ip_address.toString().split("/")[1]);
 
         // Displaying my own port
 
