@@ -119,9 +119,9 @@
 
     <Button
         android:id="@+id/netconfig_save"
-        android:layout_width="111dp"
-        android:layout_height="69dp"
-        android:text="SAVE"
+        android:layout_width="106dp"
+        android:layout_height="73dp"
+        android:text="SAVE\n&amp;\nCONNECT"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"

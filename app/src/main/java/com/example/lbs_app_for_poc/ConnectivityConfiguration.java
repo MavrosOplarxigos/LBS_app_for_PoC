@@ -1,5 +1,6 @@
 package com.example.lbs_app_for_poc;
 
+import android.graphics.Color;
 import android.net.InetAddresses;
 import android.os.Bundle;
 
@@ -11,21 +12,32 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import org.w3c.dom.Text;
+
+import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
+import java.net.Socket;
 import java.net.UnknownHostException;
+import java.security.InvalidParameterException;
 import java.util.Collections;
 import java.util.List;
 
 public class ConnectivityConfiguration extends Fragment {
 
-    // public String caller_fragment;
-    public InetAddress my_ip_address = null;
-    public InetAddress my_peer_ip_address = null;
+    // TCP connection configuration
+    // Variables should be static
+    public static InetAddress my_ip_address = null;
+    public static InetAddress my_peer_ip_address = null;
+    public static int my_port = -1;
+    public static int peer_port = -1;
+    public static Socket my_client_socket = null;
 
     public ConnectivityConfiguration() {
         // Required empty public constructor
@@ -85,6 +97,7 @@ public class ConnectivityConfiguration extends Fragment {
         // if it's null we fill it in
         if(my_peer_ip_address == null){
             try {
+                // TODO: if we are going to use a coordinator then here we must request from him a new peer
                 my_peer_ip_address = InetAddress.getByName("127.0.0.1");
             } catch (UnknownHostException e) {
                 Log.d("NET CONFIG","Peer address not found from given name!");
@@ -95,15 +108,109 @@ public class ConnectivityConfiguration extends Fragment {
         my_peer_ip_address_TV.setText(my_peer_ip_address.toString().split("/")[1]);
 
         // Displaying my own port
+        if(my_port == -1){
+            my_port = 55777;
+        }
+        TextView my_port_TV = (TextView) view.findViewById(R.id.myTCPport_value);
+        my_port_TV.setText(Integer.toString(my_port));
 
         // Displaying peer's port
+        if(peer_port == -1){
+            // TODO: if we are going to use a coordinator then here we must request from him a new peer
+            peer_port = 55777;
+        }
+        TextView peer_port_TV = (TextView) view.findViewById(R.id.peerTCPport_value);
+        peer_port_TV.setText(Integer.toString(peer_port));
+
+        // Check if connectivity is established
+        TextView connectivity_status_TV = (TextView) view.findViewById(R.id.connectivity_status);
+        if( (my_client_socket == null) || (!my_client_socket.isConnected()) ){
+            // This will change if the user clicks the save & connect button
+            connectivity_status_TV.setText("No connection!");
+            connectivity_status_TV.setBackgroundColor(Color.RED);
+        }
+        else{
+            // a connection is already established
+            connectivity_status_TV.setText("Connected");
+            connectivity_status_TV.setBackgroundColor(Color.GREEN);
+        }
 
         // Adding listener to save button to update the values
-            // retry establishing a new TCP connection when it is clicked
-            // update the user on the status of the connectivity with the connectivity status text view
+        Button save_button = (Button) view.findViewById(R.id.netconfig_save);
+        // retry establishing a new TCP connection when it is clicked
+        save_button.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+
+                        connectivity_status_TV.setText("Connecting...");
+                        connectivity_status_TV.setBackgroundColor(Color.CYAN);
+
+                        // update the values
+
+                        // my own ip address is already retrieved
+                        // peer ip address
+                        String new_peer_ipaddress = ( (String)(my_peer_ip_address_TV.getText()) );
+                        try {
+                            my_peer_ip_address = InetAddress.getByAddress(str_to_ip_array(new_peer_ipaddress));
+                        } catch (UnknownHostException e) {
+                            Toast.makeText(null, "Peer ip address invalid", Toast.LENGTH_SHORT).show();
+                            Log.d("NET CONFIG","Couldn't get the IP address from user's input");
+                            throw new RuntimeException(e);
+                        }
+                        // my tcp port
+                        my_port = Integer.getInteger((String) my_port_TV.getText());
+                        // peer port
+                        peer_port = Integer.getInteger((String) peer_port_TV.getText());
+
+                        // ok now we need to restart connectivity
+                        try {
+                            my_client_socket.close();
+                        } catch (IOException e) {
+                            Log.d("NET CONFIG","Couldn't close client socket!");
+                            throw new RuntimeException(e);
+                        }
+
+                        // Here we consider the server is already ON
+                        try {
+                            my_client_socket = new Socket(my_peer_ip_address,my_port);
+                        } catch (IOException e) {
+                            Log.d("NET CONFIG","Could not create/connect the socket!");
+                            throw new RuntimeException(e);
+                        }
+
+                        connectivity_status_TV.setText("Connected");
+                        connectivity_status_TV.setBackgroundColor(Color.GREEN);
+
+                    }
+                }
+        );
+
+        // that way we don't need to
+        // update the user on the status of the connectivity with the connectivity status text view
 
 
 
+
+        // TODO: Check here is we have asked for a new peer from the coordinator then we should try to establish connectivity as a client.
+        // this  check should not be triggered by the clicking of the Save button but rather should be done automatically initially
+        // After the first time we should only ask for a new peer from the coordinator if and only if the connectivity is lost
+        // this request should be done when the user makes a new search for example
+
+
+
+    }
+
+    byte [] str_to_ip_array(String input) throws InvalidParameterException {
+        byte [] peer_addr_array = new byte[4];
+        String [] input_arr = input.split("\\.");
+        if(input_arr.length != 4){
+            throw new InvalidParameterException();
+        }
+        for(int i=0;i<=3;i++) {
+            peer_addr_array[i] = (byte) (Integer.parseInt(input_arr[i]) & 0xFF);
+        }
+        return peer_addr_array;
     }
 
 }

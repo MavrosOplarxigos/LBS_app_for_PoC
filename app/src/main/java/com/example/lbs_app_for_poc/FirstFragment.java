@@ -45,7 +45,7 @@ public class FirstFragment extends Fragment {
         proxy_node_button.setText("Proxy Node");
 
         Button configure_button = view.findViewById(R.id.configure_button);
-        configure_button.setText("Configure");
+        configure_button.setText("Configure Client Node");
         binding.configureButton.setOnClickListener(
                 new View.OnClickListener() {
                     @Override
