@@ -174,13 +174,12 @@ public class ConnectivityConfiguration extends Fragment {
                         // Here we consider the server is already ON
                         try {
                             my_client_socket = new Socket(my_peer_ip_address,my_port);
+                            connectivity_status_TV.setText("Connected");
+                            connectivity_status_TV.setBackgroundColor(Color.GREEN);
                         } catch (IOException e) {
                             Log.d("NET CONFIG","Could not create/connect the socket!");
                             throw new RuntimeException(e);
                         }
-
-                        connectivity_status_TV.setText("Connected");
-                        connectivity_status_TV.setBackgroundColor(Color.GREEN);
 
                     }
                 }
