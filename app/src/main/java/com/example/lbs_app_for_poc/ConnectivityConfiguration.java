@@ -13,6 +13,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -104,14 +105,15 @@ public class ConnectivityConfiguration extends Fragment {
                 throw new RuntimeException(e);
             }
         }
-        TextView my_peer_ip_address_TV = (TextView) view.findViewById(R.id.peerIPaddress_value);
+        EditText my_peer_ip_address_TV = (EditText) view.findViewById(R.id.peerIPaddress_value);
         my_peer_ip_address_TV.setText(my_peer_ip_address.toString().split("/")[1]);
+        // if the edit text is changed then the changes will take place only when the save button is pressed
 
         // Displaying my own port
         if(my_port == -1){
             my_port = 55777;
         }
-        TextView my_port_TV = (TextView) view.findViewById(R.id.myTCPport_value);
+        EditText my_port_TV = (EditText) view.findViewById(R.id.myTCPport_value);
         my_port_TV.setText(Integer.toString(my_port));
 
         // Displaying peer's port
@@ -119,7 +121,7 @@ public class ConnectivityConfiguration extends Fragment {
             // TODO: if we are going to use a coordinator then here we must request from him a new peer
             peer_port = 55777;
         }
-        TextView peer_port_TV = (TextView) view.findViewById(R.id.peerTCPport_value);
+        EditText peer_port_TV = (EditText) view.findViewById(R.id.peerTCPport_value);
         peer_port_TV.setText(Integer.toString(peer_port));
 
         // Check if connectivity is established
@@ -149,8 +151,8 @@ public class ConnectivityConfiguration extends Fragment {
                         // update the values
 
                         // my own ip address is already retrieved
-                        // peer ip address
-                        String new_peer_ipaddress = ( (String)(my_peer_ip_address_TV.getText()) );
+                        // peer ip address (so we change it only after the save button is pressed)
+                        String new_peer_ipaddress = String.valueOf( (my_peer_ip_address_TV.getText()) );
                         try {
                             my_peer_ip_address = InetAddress.getByAddress(str_to_ip_array(new_peer_ipaddress));
                         } catch (UnknownHostException e) {
@@ -159,9 +161,10 @@ public class ConnectivityConfiguration extends Fragment {
                             throw new RuntimeException(e);
                         }
                         // my tcp port
-                        my_port = Integer.getInteger((String) my_port_TV.getText());
+                        // same with the ports we change them only when the save button is pressed
+                        my_port = Integer.getInteger( String.valueOf(my_port_TV.getText()) );
                         // peer port
-                        peer_port = Integer.getInteger((String) peer_port_TV.getText());
+                        peer_port = Integer.getInteger( String.valueOf(peer_port_TV.getText()) );
 
                         // ok now we need to restart connectivity
                         try {
@@ -187,9 +190,6 @@ public class ConnectivityConfiguration extends Fragment {
 
         // that way we don't need to
         // update the user on the status of the connectivity with the connectivity status text view
-
-
-
 
         // TODO: Check here is we have asked for a new peer from the coordinator then we should try to establish connectivity as a client.
         // this  check should not be triggered by the clicking of the Save button but rather should be done automatically initially

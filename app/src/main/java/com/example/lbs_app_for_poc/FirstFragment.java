@@ -43,6 +43,15 @@ public class FirstFragment extends Fragment {
 
         Button proxy_node_button = view.findViewById(R.id.proxy_node_button);
         proxy_node_button.setText("Proxy Node");
+        proxy_node_button.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        NavHostFragment.findNavController(FirstFragment.this)
+                                .navigate(R.id.action_FirstFragment_to_intermediateNodeConfig);
+                    }
+                }
+        );
 
         Button configure_button = view.findViewById(R.id.configure_button);
         configure_button.setText("Configure Client Node");
