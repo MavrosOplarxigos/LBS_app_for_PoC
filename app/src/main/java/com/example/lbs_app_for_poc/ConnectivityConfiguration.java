@@ -19,6 +19,8 @@ import android.widget.Toast;
 
 import org.w3c.dom.Text;
 
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -162,16 +164,24 @@ public class ConnectivityConfiguration extends Fragment {
                         }
                         // my tcp port
                         // same with the ports we change them only when the save button is pressed
-                        my_port = Integer.getInteger( String.valueOf(my_port_TV.getText()) );
+
+
+                        Log.d("NET CONFIG",""+my_port_TV.getText());
+                        Log.d("VALUEOF",""+String.valueOf(my_port_TV.getText()));
+                        Log.d("VALUEOF",""+Integer.valueOf( String.valueOf(my_port_TV.getText()) ));
+
+                        my_port = Integer.valueOf( String.valueOf(my_port_TV.getText()) );
                         // peer port
-                        peer_port = Integer.getInteger( String.valueOf(peer_port_TV.getText()) );
+                        peer_port = Integer.valueOf(String.valueOf(peer_port_TV.getText()));
 
                         // ok now we need to restart connectivity
-                        try {
-                            my_client_socket.close();
-                        } catch (IOException e) {
-                            Log.d("NET CONFIG","Couldn't close client socket!");
-                            throw new RuntimeException(e);
+                        if(my_client_socket != null) {
+                            try {
+                                my_client_socket.close();
+                            } catch (IOException e) {
+                                Log.d("NET CONFIG", "Couldn't close client socket!");
+                                throw new RuntimeException(e);
+                            }
                         }
 
                         // Here we consider the server is already ON
@@ -179,6 +189,19 @@ public class ConnectivityConfiguration extends Fragment {
                             my_client_socket = new Socket(my_peer_ip_address,my_port);
                             connectivity_status_TV.setText("Connected");
                             connectivity_status_TV.setBackgroundColor(Color.GREEN);
+
+                            // sending the first message of the connection
+                            DataInputStream inputStream = new DataInputStream(my_client_socket.getInputStream());
+                            DataOutputStream outputStream = new DataOutputStream(my_client_socket.getOutputStream());
+
+                            String my_message = "Hello from client!";
+                            outputStream.writeUTF(my_message);
+
+                            String server_response = inputStream.readUTF();
+                            Log.d("NET CONFIG","Message from server: "+server_response);
+
+                            // If we received the message now we can communicate with the server
+
                         } catch (IOException e) {
                             Log.d("NET CONFIG","Could not create/connect the socket!");
                             throw new RuntimeException(e);
@@ -201,6 +224,7 @@ public class ConnectivityConfiguration extends Fragment {
     }
 
     byte [] str_to_ip_array(String input) throws InvalidParameterException {
+        Log.d("STRTOIP",""+input);
         byte [] peer_addr_array = new byte[4];
         String [] input_arr = input.split("\\.");
         if(input_arr.length != 4){
