@@ -117,12 +117,13 @@ public class IntermediateNodeConfig extends Fragment {
                             Log.d("TCP server","New server socket!");
 
                             if( serverSocket.isBound() ){
-                                server_status.setText("Server Bound!");
+                                server_status.setText("Server Bound and Listening!");
                                 server_status.setBackgroundColor(Color.GREEN);
                             }
                             else {
-                                server_status.setText("Server open and unbound!");
-                                server_status.setBackgroundColor(Color.YELLOW);
+                                Log.d("TCP server","Server could not be bound!");
+                                server_status.setText("Server open but unbound!");
+                                server_status.setBackgroundColor(Color.RED);
                             }
 
                             if(serverThread != null){

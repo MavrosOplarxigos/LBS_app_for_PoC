@@ -16,6 +16,8 @@ import androidx.navigation.ui.NavigationUI;
 
 import com.example.lbs_app_for_poc.databinding.ActivityMainBinding;
 
+import java.io.File;
+
 public class MainActivity extends AppCompatActivity {
 
     private AppBarConfiguration appBarConfiguration;
@@ -38,6 +40,9 @@ public class MainActivity extends AppCompatActivity {
         NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
 
         getSupportActionBar().hide();
+
+        // We communicate the Files directory to the crypto class so that the credentials can be loaded
+        InterNodeCrypto.absolute_path = getFilesDir();
 
     }
 

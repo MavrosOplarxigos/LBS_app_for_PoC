@@ -254,7 +254,32 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                             return;
                         }
 
-                        // TODO: change this to send the api_call_url to the intermediate node instead
+                        // Now we need to instead of carrying out the request ourselves establish connectivity to the server and send msi as a byte array or string
+
+                        // 1) HANDSHAKE STEP 1: SEND CLIENT CREDS TO SERVER
+                        // [8 bytes][ ? ECDSA CERT LENGHT AFTER ENCRYPTED WITH CA PRIV KEY ]
+                        // [CLIENT ID][ECDSA_ID_AND_PUBKEY_ENCRYPTED_WITH_CA_PRIVATE_KEY]
+
+                        // 2) HANDSHAKE STEP 2: RECEIVE SERVER CREDS
+                        // [8 bytes][ ? ECDSA CERT LENGHT AFTER ENCRYPTED WITH CA PRIV KEY ]
+                        // [SERVER ID][ECDSA_ID_AND_SERVER_PUBKEY_ENC_WITH_CA_PRIVATE_KEY]
+
+                        // VERIFY SERVER ID = ID IN THE CERTIFICATE
+
+                        // 3) SERVICE STEP 1: SERIALIZE OR STRINGIFY msi (or make into a byte array)
+                        // 4) SERVICE STEP 2: ENCRYPT WITH PRIV KEY OF CLIENT AND THEN WITH PUB KEY OF SERVER
+                        // 5) SERVICE STEP 3: SEND THE STRING TO THE SERVER
+
+                        // 6) SERVICE STEP 4: RECEIVE A STRING (or byte array from the server)
+                        // 7) SERVICE STEP 5: DECRYPT FIRST USING PRIV KEY OF CLIENT AND THEN PUBLIC KEY OF SERVER
+
+                        // 8) SERVICE STEP 6: USE THE RESPONSE AND DISPLAY IT
+
+                        // 9) ACKNOWLEDGEMENT STEP 1: HASH THE RECEIVED STRING AND SEND IT ENCRYPTED WITH CLIENT KEY AND THEN SERVER PUB KEY
+
+                        /*
+
+                        // TODO: change this to send the api_call_url to the intermediate node instead steps are above
                         // the intermediate node should run the following code after receiving the request
                         JSONObject answer = execute_api_call(api_call_string);
 
@@ -276,7 +301,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // After the transformation is carried out we should be left with a GeoJSON
                         JSONObject answer_geojsoned = json_to_geojson( answer );
                         apply_result_layer(answer_geojsoned);
-
+                        */
 
                     }
                 }
@@ -335,6 +360,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
         mMapView.onSaveInstanceState(mapViewBundle);
     }
 
+    // TODO: MOVE THIS FUNCTION TO A SEPARATE CLASS (LBS_DIRECT_INTERACTIONS) LET'S CALL IT
     JSONObject execute_api_call(String call_string){
 
         try {
