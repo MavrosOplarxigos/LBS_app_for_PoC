@@ -20,6 +20,9 @@
         <action
             android:id="@+id/action_FirstFragment_to_intermediateNodeConfig"
             app:destination="@id/intermediateNodeConfig" />
+        <action
+            android:id="@+id/action_FirstFragment_to_credentialsSelection"
+            app:destination="@id/credentialsSelection" />
     </fragment>
     <fragment
         android:id="@+id/SecondFragment"
@@ -48,4 +51,9 @@
         android:name="com.example.lbs_app_for_poc.IntermediateNodeConfig"
         android:label="fragment_intermediate_node_config"
         tools:layout="@layout/fragment_intermediate_node_config" />
+    <fragment
+        android:id="@+id/credentialsSelection"
+        android:name="com.example.lbs_app_for_poc.CredentialsSelection"
+        android:label="fragment_credentials_selection"
+        tools:layout="@layout/fragment_credentials_selection" />
 </navigation>

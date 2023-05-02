@@ -69,6 +69,22 @@ public class FirstFragment extends Fragment {
                 }
         );
 
+        Button configure_creds_button = view.findViewById(R.id.configure_credentials_button);
+        configure_button.setText("Configure Identity");
+        binding.configureButton.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+                        //Bundle bundle = new Bundle();
+                        //bundle.putString("caller_fragment","main");
+                        //NavHostFragment.findNavController(FirstFragment.this)
+                        //               .navigate(R.id.action_FirstFragment_to_connectivityConfiguration,bundle);
+                        NavHostFragment.findNavController(FirstFragment.this)
+                                .navigate(R.id.action_FirstFragment_to_credentialsSelection);
+                    }
+                }
+        );
+
         view.setBackgroundColor(Color.DKGRAY);
 
     }
