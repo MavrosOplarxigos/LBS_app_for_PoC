@@ -1,5 +1,8 @@
 package com.example.lbs_app_for_poc;
 import android.util.Log;
+
+import androidx.annotation.NonNull;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -153,6 +156,41 @@ public class InterNodeCrypto {
     * */
     public static boolean checkMyCreds(){
         return true;
+    }
+
+    /*
+    TODO: Implement this function so that the details of the certificate are return as a String (issuer, owner, etc.)
+     */
+    public static String getCertDetails(@NonNull File certificate){
+        X509Certificate temp_cert = null;
+        try{
+            File certFile = new File(certificate.getPath());
+            FileInputStream fileInputStream = new FileInputStream(certFile);
+            CertificateFactory caCertificateFactory = CertificateFactory.getInstance(CertificateStandard);
+            temp_cert = (X509Certificate) caCertificateFactory.generateCertificate(fileInputStream);
+            fileInputStream.close();
+            Log.d("CRED DETAILS","The certificate has been loaded successfully!");
+        } catch (CertificateException e){
+            Log.d("CRED DETAILS","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
+            throw  new RuntimeException(e);
+        } catch (FileNotFoundException e){
+            Log.d("CRED DETAILS","The input file could not be retrieved!");
+        } catch (IOException e) {
+            Log.d("CRED DETAILS","The file input stream on the certificate could not be closed!");
+            throw new RuntimeException(e);
+        }
+
+        return getCertDetails(temp_cert);
+
+    }
+
+    public static String getCertDetails(@NonNull X509Certificate certificate){
+        // Now we need to put the details in a String
+        // TODO: put more details other than the issuer DN
+        String answer = "";
+        answer += "Subject: " + certificate.getSubjectDN().toString() + '\n';
+
+        return answer;
     }
 
 }

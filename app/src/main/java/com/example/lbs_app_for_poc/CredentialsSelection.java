@@ -100,6 +100,7 @@ public class CredentialsSelection extends Fragment {
         }
         else{
             // TODO: Based on the certificate set the text to provide the details of the certificate
+            CAdetailsTV.setText( InterNodeCrypto.getCertDetails(InterNodeCrypto.CA_cert) );
         }
 
         Button CACertButton = (Button) view.findViewById(R.id.ca_cert_button);
@@ -112,6 +113,7 @@ public class CredentialsSelection extends Fragment {
                         // After Loading the file we need to save it as temporary file to use as an input in the SaveCertificates function
                         // Now from the temporary file we just use the path to construct the certFile
                         certFile = new File(tempFile.getPath());
+                        CAdetailsTV.setText( InterNodeCrypto.getCertDetails(certFile) );
                     }
                 }
         );
