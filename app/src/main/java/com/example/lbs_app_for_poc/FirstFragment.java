@@ -6,6 +6,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
@@ -86,6 +87,21 @@ public class FirstFragment extends Fragment {
         );
 
         view.setBackgroundColor(Color.DKGRAY);
+
+        // We should also check whether there are certificates or not loaded and report it to the user the first time the app is
+        try {
+            InterNodeCrypto.LoadCertificates();
+            if(InterNodeCrypto.checkMyCreds()) {
+                Toast.makeText(getContext(), "The loaded credentials are valid!", Toast.LENGTH_SHORT).show();
+            }
+            else{
+                Toast.makeText(getContext(), "The loaded credentials are invalid.\nConsider configuring the credentials first!", Toast.LENGTH_SHORT).show();
+            }
+        }
+        catch (Exception e){
+            // TODO: Give more verbose reason here why the credentials are not loaded successfully!
+            Toast.makeText(getContext(), "No credentials loaded! Consider configuring them!", Toast.LENGTH_SHORT).show();
+        }
 
     }
 

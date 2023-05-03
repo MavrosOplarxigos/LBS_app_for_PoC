@@ -1,7 +1,5 @@
 package com.example.lbs_app_for_poc;
-
 import android.util.Log;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -36,17 +34,20 @@ public class InterNodeCrypto {
 
     public static File absolute_path;
 
+    // The following filenames are set to be the standard ones that we will use that's why they are final.
     private static final String my_key_path = "my.key";
     private static final String my_cert_path = "my.crt";
     private static final String ca_cert_path = "ca.crt";
     private static final String CryptoAlgorith = "EC";
     private static final String CertificateStandard = "X.509";
 
-    public ECPrivateKey my_key = null;
-    public X509Certificate my_cert = null;
-    public X509Certificate CA_cert = null;
+    // The keys once loaded are static because we don't want to have a specific instance of the class
+    // but rather just use the class overall to do all the crypto that we need.
+    public static ECPrivateKey my_key = null;
+    public static X509Certificate my_cert = null;
+    public static X509Certificate CA_cert = null;
 
-    public void copyFile(File source, File destFile){
+    private static void copyFile(File source, File destFile){
 
         try (FileInputStream fis = new FileInputStream(source);
              FileOutputStream fos = new FileOutputStream(destFile)) {
@@ -69,7 +70,7 @@ public class InterNodeCrypto {
     to inform of whether the credentials were saved/updated successfully or not.
     Then this function copies these files to a standard path and calls LoadCertificates to load them.
      */
-    public void SaveCertificates(File key, File cert, File caCert) {
+    public static void SaveCertificates(File key, File cert, File caCert) {
 
         // Copy the files to the locations we want them to be
         copyFile(key,new File(absolute_path,my_key_path));
@@ -97,7 +98,7 @@ public class InterNodeCrypto {
 
     This function should run when the app starts and whenever the user picks other credentials and clicks to save the new ones.
      */
-    public void LoadCertificates() throws FileNotFoundException, IOException {
+    public static void LoadCertificates() throws FileNotFoundException, IOException {
 
         // loading my private key
         File my_key_file = new File(absolute_path,my_key_path);
@@ -145,6 +146,13 @@ public class InterNodeCrypto {
             throw  new RuntimeException(e);
         }
 
+    }
+
+    /*
+    * TODO: Implement this function to check certificate issuer and CN and private key matching cert
+    * */
+    public static boolean checkMyCreds(){
+        return true;
     }
 
 }
