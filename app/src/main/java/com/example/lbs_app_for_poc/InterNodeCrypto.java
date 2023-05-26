@@ -97,6 +97,46 @@ public class InterNodeCrypto {
 
     }
 
+    public static X509Certificate CertFromFile(File candidate_cert_file) throws FileNotFoundException, IOException{
+        FileInputStream certFileInputStream = new FileInputStream(candidate_cert_file);
+        X509Certificate result = null;
+        try {
+            CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
+            result = (X509Certificate) certificateFactory.generateCertificate(certFileInputStream);
+            certFileInputStream.close();
+            Log.d("CertFromFile","A certificate can be loaded successfully from the file!");
+        } catch (CertificateException e) {
+            Log.d("CertFromFile","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
+            throw new RuntimeException(e);
+        }
+        return result;
+    }
+
+    public static ECPrivateKey KeyFromFile(File candidate_key_file) throws FileNotFoundException, IOException{
+
+        byte [] candidate_key_bytes = new byte[(int)candidate_key_file.length()];
+        FileInputStream CandidateKeyFileInputStream = new FileInputStream(candidate_key_file);
+        CandidateKeyFileInputStream.read(candidate_key_bytes);
+        CandidateKeyFileInputStream.close();
+        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(candidate_key_bytes);
+        KeyFactory keyFactory ;
+        ECPrivateKey result = null;
+        // Log.d("Security Provider", "The provider is = " + java.security.Security.getProvider(CryptoAlgorith).toString() );
+        try {
+            keyFactory = KeyFactory.getInstance(CryptoAlgorith);
+            result = (ECPrivateKey) keyFactory.generatePrivate(keySpec);
+            Log.d("KeyFromFile","A private key has been loaded successfully from the file!");
+        } catch (NoSuchAlgorithmException e) {
+            Log.d("KeyFromFile","The algorithm requested is non-existent! Algorithm name " + CryptoAlgorith);
+            throw new RuntimeException(e);
+        } catch (InvalidKeySpecException e) {
+            Log.d("KeyFromFile","Invalid key specifications provided for private key from file!");
+            throw new RuntimeException(e);
+        }
+
+        return result;
+    }
+
     /*
     This function tries to load the certificates from standard file locations.
     If those files do not exist an exception is thrown to indicate that.
@@ -157,6 +197,14 @@ public class InterNodeCrypto {
     * TODO: Implement this function to check certificate issuer and CN and private key matching cert
     * */
     public static boolean checkMyCreds(){
+        return checkCreds(InterNodeCrypto.CA_cert,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
+    }
+
+    public static boolean checkCreds(X509Certificate CA_certificate, X509Certificate MY_certificate, ECPrivateKey MY_key){
+        // TODO: check if the certificate is signed by the CA
+
+        // TODO: check if the key can sign the certificate
+
         return true;
     }
 
