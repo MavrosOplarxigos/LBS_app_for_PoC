@@ -17,6 +17,7 @@ import com.example.lbs_app_for_poc.databinding.FragmentFirstBinding;
 public class FirstFragment extends Fragment {
 
     private FragmentFirstBinding binding;
+    private static boolean CredsNoticeGiven = false; // We will give at most one time notice to the user when there are no certificates
 
     @Override
     public View onCreateView(
@@ -37,6 +38,7 @@ public class FirstFragment extends Fragment {
         binding.buttonFirst.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
+                CredentialsNoticeCheck();
                 NavHostFragment.findNavController(FirstFragment.this)
                         .navigate(R.id.action_FirstFragment_to_SecondFragment);
             }
@@ -48,6 +50,7 @@ public class FirstFragment extends Fragment {
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
+                        CredentialsNoticeCheck();
                         NavHostFragment.findNavController(FirstFragment.this)
                                 .navigate(R.id.action_FirstFragment_to_intermediateNodeConfig);
                     }
@@ -60,6 +63,7 @@ public class FirstFragment extends Fragment {
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
+                        CredentialsNoticeCheck();
                         //Bundle bundle = new Bundle();
                         //bundle.putString("caller_fragment","main");
                         //NavHostFragment.findNavController(FirstFragment.this)
@@ -71,8 +75,8 @@ public class FirstFragment extends Fragment {
         );
 
         Button configure_creds_button = view.findViewById(R.id.configure_credentials_button);
-        configure_button.setText("Configure Identity");
-        binding.configureButton.setOnClickListener(
+        configure_creds_button.setText("Configure Identity");
+        configure_creds_button.setOnClickListener(
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
@@ -88,6 +92,9 @@ public class FirstFragment extends Fragment {
 
         view.setBackgroundColor(Color.DKGRAY);
 
+    }
+
+    public void CredentialsNoticeCheck(){
         // We should also check whether there are certificates or not loaded and report it to the user the first time the app is
         try {
             InterNodeCrypto.LoadCertificates();
@@ -102,7 +109,7 @@ public class FirstFragment extends Fragment {
             // TODO: Give more verbose reason here why the credentials are not loaded successfully!
             Toast.makeText(getContext(), "No credentials loaded! Consider configuring them!", Toast.LENGTH_SHORT).show();
         }
-
+        CredsNoticeGiven = true;
     }
 
     @Override

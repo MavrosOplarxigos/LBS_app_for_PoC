@@ -47,7 +47,9 @@ public class InterNodeCrypto {
     // The keys once loaded are static because we don't want to have a specific instance of the class
     // but rather just use the class overall to do all the crypto that we need.
     public static ECPrivateKey my_key = null;
-    public static X509Certificate my_cert = null;
+    public static X509Certificate my_cert = null; // TODO: Don't use X509 But rather use a customized certificate class
+                                                  // TODO: Ideally implement with both X509 for the case of standard compliance and future development AND
+                                                  //  with a smaller version of a certificate with less data to communicate between nodes when communicating
     public static X509Certificate CA_cert = null;
 
     private static void copyFile(File source, File destFile){
@@ -158,14 +160,12 @@ public class InterNodeCrypto {
         return true;
     }
 
-    /*
-    TODO: Implement this function so that the details of the certificate are return as a String (issuer, owner, etc.)
-     */
-    public static String getCertDetails(@NonNull File certificate){
+    public static String getCertDetails(@NonNull File certificate) throws FileNotFoundException {
         X509Certificate temp_cert = null;
         try{
-            File certFile = new File(certificate.getPath());
-            FileInputStream fileInputStream = new FileInputStream(certFile);
+            // File certFile = new File(certificate.toString());
+            // We can't rread this using input stream?
+            FileInputStream fileInputStream = new FileInputStream(certificate);
             CertificateFactory caCertificateFactory = CertificateFactory.getInstance(CertificateStandard);
             temp_cert = (X509Certificate) caCertificateFactory.generateCertificate(fileInputStream);
             fileInputStream.close();
@@ -175,20 +175,39 @@ public class InterNodeCrypto {
             throw  new RuntimeException(e);
         } catch (FileNotFoundException e){
             Log.d("CRED DETAILS","The input file could not be retrieved!");
+            throw new FileNotFoundException();
         } catch (IOException e) {
             Log.d("CRED DETAILS","The file input stream on the certificate could not be closed!");
             throw new RuntimeException(e);
         }
 
         return getCertDetails(temp_cert);
-
     }
 
+    /*
+    TODO: Implement this function so that the details of the certificate are return as a String (issuer, owner, etc.)
+    */
     public static String getCertDetails(@NonNull X509Certificate certificate){
+        if (certificate == null){
+            Log.d("CRED DETAILS","How does null certificate reach this point!");
+            return "";
+        }
+        if (certificate.getSubjectDN() == null){
+            Log.d("CRED DETAILS", "This certificate has no prinicpal! Attempting to send issuer instead!");
+            if( certificate.getIssuerDN() != null ) {
+                return certificate.getIssuerDN().toString();
+            }
+            else{
+                Log.d("CRED DETAILS","This certificate has now issuer either!");
+                return "";
+            }
+        }
         // Now we need to put the details in a String
         // TODO: put more details other than the issuer DN
         String answer = "";
         answer += "Subject: " + certificate.getSubjectDN().toString() + '\n';
+
+        Log.d("CRED DETAILS","Successfully retrieved subject DN");
 
         return answer;
     }

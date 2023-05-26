@@ -1,5 +1,7 @@
 package com.example.lbs_app_for_poc;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -10,6 +12,8 @@ import androidx.activity.result.ActivityResultRegistry;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.LifecycleObserver;
@@ -25,49 +29,111 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Objects;
 
-/**
- * A simple {@link Fragment} subclass.
- * Use the {@link CredentialsSelection#newInstance} factory method to
- * create an instance of this fragment.
- */
 public class CredentialsSelection extends Fragment {
 
     // Inner class for selecting files
     class MyLifeCycleObserver implements DefaultLifecycleObserver{
         public final ActivityResultRegistry mRegistry;
-        public ActivityResultLauncher<String> mGetContent;
+        public ActivityResultLauncher<String> GetContent;
         public MyLifeCycleObserver(@NonNull ActivityResultRegistry registry) {
             this.mRegistry = registry;
         }
         public void onCreate(@NonNull LifecycleOwner owner){
-            mGetContent = mRegistry.register("key",owner,new ActivityResultContracts.GetContent(),
+            GetContent = mRegistry.register("key",owner,new ActivityResultContracts.GetContent(),
                     new ActivityResultCallback<Uri>(){
                         @Override
                         public void onActivityResult(Uri uri){
                             // Handle the returned Uri
                             Log.d("CRED FILE LOADING","Now handling the selected URI");
-                            tempFile = null;
-                            tempFile = new File(uri.getPath());
-                            if(tempFile == null){
-                                Log.d("CRED FILE LOADING","The Uri points to a null file!");
+                            if(uri == null){
+                                Log.d("CRED FILE LOADING","The selected URI is null!");
+                                return;
                             }
+                            if(Objects.equals(target_file, "CAcert")){
+                                Log.d("CA_CRED","We are trying to load the CAcert! uri = " + uri.getPath() );
+                                try {
+
+                                    String pathFromFileChooser = AnotherFileChooser.getPath(getContext(),uri);
+                                    // String pathFromFileChooser = FileChooser.ContentProviderGetPath(getContext(),uri);
+                                    // String pathFromFileChooser = FileChooser.getPath(getContext(),uri);
+                                    Log.d("CA_CRED","The resolved path from the AnotherFileChooser class is "+pathFromFileChooser);
+
+                                    CAcertFile = new File(pathFromFileChooser);
+                                    if(CAcertFile==null){
+                                        Log.d("CA_CRED","The CAcertFile from pathFromFileChooser is null");
+                                    }
+
+                                    /*allowAccess1stAttempt();
+
+                                    if (ContextCompat.checkSelfPermission(getActivity(), android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
+                                        ActivityCompat.requestPermissions(getActivity(),
+                                                new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                                                MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE);
+                                    }*/
+
+                                    Log.d("CA_CRED","Now will try to give the path to a FileInputStream instead to see if we can read it!");
+                                    try {
+                                        FileInputStream CAcertIFS = new FileInputStream(pathFromFileChooser);
+                                        Log.d("CA_CRED","Successfully loaded path on FIS! Use FIS to read the file from path instead!");
+                                    } catch (FileNotFoundException e) {
+                                        Log.d("CA_CRED","Failing to open it with FIS directly as well!");
+                                        throw new RuntimeException(e);
+                                    }
+
+                                    // CAcertFile = new File(uri.toString());
+                                }
+                                catch (RuntimeException e){
+                                    Log.d("CRED FILE LOADING","Couldn't get a path from the URI selected!");
+                                    e.printStackTrace();
+                                    return;
+                                }
+                                Log.d("CA_CRED","The file is loaded! " + CAcertFile.toString() );
+                                try {
+                                    CAdetailsTV.setText( InterNodeCrypto.getCertDetails(CAcertFile) );
+                                }
+                                catch (Exception e){
+                                    Log.d("CA_CRED","Failed to get certificate details!");
+                                    e.printStackTrace();
+                                }
+                                Log.d("CRED FILE LOADING","Saved to CAcertFile!");
+                                return;
+                            }
+
                         }
                     });
         }
+
+        private static final int MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE = 2123;
+        public void allowAccess1stAttempt(){
+            if (ContextCompat.checkSelfPermission(getActivity(), android.Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED){
+                ActivityCompat.requestPermissions(getActivity(),
+                        new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},
+                        MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE);
+            }
+        }
+
         public void selectFile(){
             // Open this activity to select the file
-            mGetContent.launch("/*"); // TODO: find better location to begin with rather than the root directory of the filesystem (Maybe docs)
-            Log.d("CRED FILE LOADING","Exciting the selectFile function!");
+            // the important part with this was the */* that allows you to choose any file
+            GetContent.launch("*/*"); // TODO: find better location to begin with rather than the root directory of the filesystem (Maybe docs)
+            Log.d("CRED FILE LOADING","Exiting the selectFile function!");
         }
 
     }
+    // Drive link: https://drive.google.com/drive/folders/1KrQkxoJEx5A45Tdp6BbGhVqFQMYE5gKB?usp=sharing
 
-    private File tempFile;
+    private String target_file;
     private File keyFile;
     private File certFile;
     private File CAcertFile;
     private MyLifeCycleObserver myLifeCycleObserver;
+    private TextView CAdetailsTV;
 
     public CredentialsSelection() {
         // Required empty public constructor
@@ -93,7 +159,7 @@ public class CredentialsSelection extends Fragment {
         super.onViewCreated(view, savedInstanceState);
 
         // Based on whether the credentials are loaded or not we need to update the text views
-        TextView CAdetailsTV = (TextView) ( (ScrollView) view.findViewById(R.id.scroll_view_ca_cert) ).findViewById(R.id.ca_details_TV);
+        CAdetailsTV = (TextView) ( (ScrollView) view.findViewById(R.id.scroll_view_ca_cert) ).findViewById(R.id.ca_details_TV);
         if( InterNodeCrypto.CA_cert == null ){
             CAdetailsTV.setBackgroundColor(Color.RED);
             CAdetailsTV.setText("No CA certificate loaded!");
@@ -109,11 +175,8 @@ public class CredentialsSelection extends Fragment {
                     @Override
                     public void onClick(View view) {
                         // When the button is clicked we need to pop-up a window for selection of the file to load
+                        target_file = "CAcert";
                         myLifeCycleObserver.selectFile();
-                        // After Loading the file we need to save it as temporary file to use as an input in the SaveCertificates function
-                        // Now from the temporary file we just use the path to construct the certFile
-                        certFile = new File(tempFile.getPath());
-                        CAdetailsTV.setText( InterNodeCrypto.getCertDetails(certFile) );
                     }
                 }
         );
