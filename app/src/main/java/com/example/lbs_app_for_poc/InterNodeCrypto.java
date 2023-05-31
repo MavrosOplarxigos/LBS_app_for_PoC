@@ -1,25 +1,33 @@
 package com.example.lbs_app_for_poc;
 import android.util.Log;
-
 import androidx.annotation.NonNull;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.security.KeyFactory;
-import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
+import java.util.Scanner;
+import java.security.Security;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECKey;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.util.Scanner;
+import java.security.KeyFactory;
+import java.security.interfaces.ECPrivateKey;
+
+import org.bouncycastle.util.io.pem.PemObject;
+import org.bouncycastle.util.io.pem.PemReader;
+
 
 /*
 TODO: Make the certificate generation into a bash script so that the user can test PoC.
@@ -41,7 +49,9 @@ public class InterNodeCrypto {
     private static final String my_key_path = "my.key";
     private static final String my_cert_path = "my.crt";
     private static final String ca_cert_path = "ca.crt";
-    private static final String CryptoAlgorith = "EC";
+    private static final String CryptoAlgorithm = "ECDSA";
+    private static final String curveName = "prime256v1";
+    private static final String provider_name = "BC";
     private static final String CertificateStandard = "X.509";
 
     // The keys once loaded are static because we don't want to have a specific instance of the class
@@ -112,29 +122,127 @@ public class InterNodeCrypto {
         return result;
     }
 
+    private static byte[] parsePEMFile(File pemFile) throws IOException {
+        if (!pemFile.isFile() || !pemFile.exists()) {
+            throw new FileNotFoundException(String.format("The file '%s' doesn't exist.", pemFile.getAbsolutePath()));
+        }
+        PemReader reader = new PemReader(new FileReader(pemFile));
+        PemObject pemObject = reader.readPemObject();
+        byte[] content = pemObject.getContent();
+        reader.close();
+        return content;
+    }
+
     public static ECPrivateKey KeyFromFile(File candidate_key_file) throws FileNotFoundException, IOException{
 
-        byte [] candidate_key_bytes = new byte[(int)candidate_key_file.length()];
+        byte [] key_bytes = parsePEMFile(candidate_key_file);
+        /*byte [] candidate_key_bytes = new byte[(int)candidate_key_file.length()];
         FileInputStream CandidateKeyFileInputStream = new FileInputStream(candidate_key_file);
         CandidateKeyFileInputStream.read(candidate_key_bytes);
-        CandidateKeyFileInputStream.close();
-        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(candidate_key_bytes);
-        KeyFactory keyFactory ;
+        CandidateKeyFileInputStream.close();*/
+
+        PrivateKey privateKey = null;
+        try {
+            KeyFactory kf = KeyFactory.getInstance("EC");
+            EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(key_bytes);
+            privateKey = kf.generatePrivate(keySpec);
+        } catch (NoSuchAlgorithmException e) {
+            Log.d("SIMPLE KEY ENCODING","Could not reconstruct the private key, the given algorithm could not be found.");
+            e.printStackTrace();
+        } catch (InvalidKeySpecException e) {
+            Log.d("SIMPLE KEY ENCODING","Could not reconstruct the private key");
+            e.printStackTrace();
+        }
+
+        Log.d("SIMPLE KEY ENCODING","The private key is not = " + privateKey.toString() );
+
+        return (ECPrivateKey) privateKey;
+        /*
+        // Problem: Here there is a parsing error if we try to get the keySpec with:
+        // PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(my_key_bytes);
+        // then the key factory comes to a parsing error for the command:
+        // keyFactory = KeyFactory.getInstance(CryptoAlgorithm);
+
+
+        // Solution #1: (Doesn't work) try to remove the bytes for key headers (first and last line)
+        // -----BEGIN EC PRIVATE KEY----- = 31 bytes (with endline)
+        // The actual key bytes were = 167 (with 3 endlines - 65 bytes per line and last line 37)
+        // -----END EC PRIVATE KEY----- = 29 bytes (with end of file)
+
+        Log.d("KEY PARSE ERROR DEBUG","The size of the key bytes array is "+candidate_key_bytes.length+" bytes!");
+        // The key byte array size (debugged-as read from system) is: 227 same as in the file system
+
+        String key_bytes_string = new String(candidate_key_bytes);
+        Log.d("KEY PARSE ERROR DEBUG","The key bytes raw as read from the file:\n"+key_bytes_string);
+
+        // so we want bytes from indexes [31..(31+167-1)] only!
+        // maybe try reading from byte 31 until a byte of '-' is found signifying the last line
+        byte [] clean_candidate_key_bytes = new byte[167];
+        for(int i=0;i<167;i++){
+            clean_candidate_key_bytes[i] = candidate_key_bytes[31+i];
+        }
+        String clean_key_base64String = new String(clean_candidate_key_bytes);
+        Log.d("KEY PARSE ERROR DEBUG","The clean key bytes are:\n" + clean_key_base64String );
+
+        // Solution 1.1: Trying to remove the whitespaces from the key as well
+        byte [] nows_clean_key_bytes = new byte[164];
+        int ckey_index = 0;
+        for(int i=0;i<164;i++){
+            while( (char)(clean_candidate_key_bytes[ckey_index]) == '\n' ){
+                ckey_index++;
+            }
+            if(ckey_index >= 167){
+                break;
+            }
+            nows_clean_key_bytes[i] = clean_candidate_key_bytes[ckey_index];
+            ckey_index++;
+        }
+
+        String nows_clean_key_bytes_stirng = new String(nows_clean_key_bytes);
+        Log.d("KEY PARSE ERROR DEBUG","The clean key bytes no ws are:\n" + nows_clean_key_bytes_stirng );
+
+        // PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(candidate_key_bytes);
+        // PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(clean_candidate_key_bytes); // removing headers
+        // PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(nows_clean_key_bytes); // removing whitspaces
+
         ECPrivateKey result = null;
         // Log.d("Security Provider", "The provider is = " + java.security.Security.getProvider(CryptoAlgorith).toString() );
+        // Solution #2: Try another security provider (i.e.Bouncy Castle) which might support the elliptic curve crypto
         try {
-            keyFactory = KeyFactory.getInstance(CryptoAlgorith);
-            result = (ECPrivateKey) keyFactory.generatePrivate(keySpec);
+            Security.addProvider(new BouncyCastleProvider());
+            PemReader pemReader = new PemReader(new FileReader(candidate_key_file));
+            PemObject pemObject = pemReader.readPemObject();
+            byte[] keyBytes = pemObject.getContent();
+            PrivateKeyInfo privateKeyInfo = PrivateKeyInfo.getInstance(keyBytes);
+            // X9ECParameters curveParams = org.bouncycastle.asn1.x9.ECNamedCurveTable.getByOID(org.bouncycastle.asn1.sec.SECObjectIdentifiers.secp256r1);
+            X962Parameters params = X962Parameters.getInstance(privateKeyInfo.getPrivateKeyAlgorithm().getParameters());
+            PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(privateKeyInfo.parsePrivateKey().toASN1Primitive().getEncoded());
+            // keyFactory = KeyFactory.getInstance(CryptoAlgorithm,provider_name);
+            KeyFactory keyFactory = KeyFactory.getInstance(params.isNamedCurve() ? "EC" : "ECDSA", "BC");
+            // PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(candidate_key_bytes);
+            // ECNamedCurveParameterSpec curveSpec = ECNamedCurveTable.getParameterSpec(curveName); // needed only when generating key pairs
+
+            // PrivateKey privateKey = keyFactory.generatePrivate(new ECPrivateKeySpec(keyBytes,null));
+            //PrivateKey privateKey = keyFactory.generatePrivate(keySpec);
+            //pemReader.close();
+
+            // result = (ECPrivateKey) keyFactory.generatePrivate(new ECPrivateKeySpec(keyBytes)); // keyFactory.generatePrivate(keySpec);
+            Log.d("KEY PARSE ERROR DEBUG","SUCCESS! The result is generated! The keyFactory result is "+ result );
+            Log.d("KEY PARSE ERROR DEBUG","The keyFactory result.toString() is "+ result.toString() );
             Log.d("KeyFromFile","A private key has been loaded successfully from the file!");
         } catch (NoSuchAlgorithmException e) {
-            Log.d("KeyFromFile","The algorithm requested is non-existent! Algorithm name " + CryptoAlgorith);
+            Log.d("KeyFromFile","The algorithm requested is non-existent! Algorithm name " + CryptoAlgorithm);
             throw new RuntimeException(e);
         } catch (InvalidKeySpecException e) {
             Log.d("KeyFromFile","Invalid key specifications provided for private key from file!");
             throw new RuntimeException(e);
+        } catch (NoSuchProviderException e) {
+            Log.d("KeyFromFile","Security provider doesn't exist!");
+            throw new RuntimeException(e);
         }
 
-        return result;
+        return result;*/
+
     }
 
     /*
@@ -146,6 +254,7 @@ public class InterNodeCrypto {
     public static void LoadCertificates() throws FileNotFoundException, IOException {
 
         // loading my private key
+        /*
         File my_key_file = new File(absolute_path,my_key_path);
         byte [] my_key_bytes = new byte[(int)my_key_file.length()];
         FileInputStream keyFileInputStream = new FileInputStream(my_key_file);
@@ -154,16 +263,17 @@ public class InterNodeCrypto {
         PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(my_key_bytes);
         KeyFactory keyFactory;
         try {
-            keyFactory = KeyFactory.getInstance(CryptoAlgorith);
+            keyFactory = KeyFactory.getInstance(CryptoAlgorithm);
             my_key = (ECPrivateKey) keyFactory.generatePrivate(keySpec);
             Log.d("CRED LOADING","The private key has been loaded successfully!");
         } catch (NoSuchAlgorithmException e) {
-            Log.d("CRED LOADING","The algorithm requested is non-existent! Algorithm name " + CryptoAlgorith);
+            Log.d("CRED LOADING","The algorithm requested is non-existent! Algorithm name " + CryptoAlgorithm);
             throw new RuntimeException(e);
         } catch (InvalidKeySpecException e) {
             Log.d("CRED LOADING","Invalid key specifications provided for user's private key!");
             throw new RuntimeException(e);
         }
+        */
 
         // loading my certificate
         File my_cert_file = new File(absolute_path,my_cert_path);
