@@ -22,9 +22,10 @@ import java.security.PrivateKey;
 import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
-import java.security.KeyFactory;
+// import java.security.KeyFactory;
 import java.security.interfaces.ECPrivateKey;
 
+import org.bouncycastle.jcajce.provider.asymmetric.x509.KeyFactory;
 import org.bouncycastle.util.io.pem.PemObject;
 import org.bouncycastle.util.io.pem.PemReader;
 
