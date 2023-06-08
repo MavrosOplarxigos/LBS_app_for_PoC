@@ -1,34 +1,19 @@
 package com.example.lbs_app_for_poc;
 import android.util.Log;
+
 import androidx.annotation.NonNull;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.Base64;
-import java.util.Scanner;
-import java.security.Security;
-import java.security.cert.Certificate;
+import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.security.interfaces.ECKey;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.spec.EncodedKeySpec;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.PKCS8EncodedKeySpec;
-// import java.security.KeyFactory;
-import java.security.interfaces.ECPrivateKey;
-
-import org.bouncycastle.jcajce.provider.asymmetric.x509.KeyFactory;
-import org.bouncycastle.util.io.pem.PemObject;
-import org.bouncycastle.util.io.pem.PemReader;
-
 
 /*
 TODO: Make the certificate generation into a bash script so that the user can test PoC.
@@ -47,17 +32,17 @@ public class InterNodeCrypto {
     public static File absolute_path;
 
     // The following filenames are set to be the standard ones that we will use that's why they are final.
-    private static final String my_key_path = "my.key";
-    private static final String my_cert_path = "my.crt";
-    private static final String ca_cert_path = "ca.crt";
-    private static final String CryptoAlgorithm = "ECDSA";
-    private static final String curveName = "prime256v1";
+    public static final String my_key_path = "my.key";
+    public static final String my_cert_path = "my.crt";
+    public static final String ca_cert_path = "ca.crt";
+    private static final String CryptoAlgorithm = "RSA";
+    // private static final String curveName = "prime256v1";
     private static final String provider_name = "BC";
-    private static final String CertificateStandard = "X.509";
+    private static final String CertificateStandard = "X509";
 
-    // The keys once loaded are static because we don't want to have a specific instance of the class
+    // The keys "once loaded" are static because we don't want to have a specific instance of the class
     // but rather just use the class overall to do all the crypto that we need.
-    public static ECPrivateKey my_key = null;
+    public static PrivateKey my_key = null;
     public static X509Certificate my_cert = null; // TODO: Don't use X509 But rather use a customized certificate class
                                                   // TODO: Ideally implement with both X509 for the case of standard compliance and future development AND
                                                   //  with a smaller version of a certificate with less data to communicate between nodes when communicating
@@ -95,7 +80,7 @@ public class InterNodeCrypto {
 
         Log.d("CRED LOADING","The files were copied to the standard locations successfully!");
 
-        // Load the files all over again
+        // Load the files all over again for testing that loading them is successful
         try{
             LoadCertificates();
         } catch (FileNotFoundException e) {
@@ -120,44 +105,160 @@ public class InterNodeCrypto {
             Log.d("CertFromFile","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
             throw new RuntimeException(e);
         }
+
         return result;
     }
 
-    private static byte[] parsePEMFile(File pemFile) throws IOException {
-        if (!pemFile.isFile() || !pemFile.exists()) {
-            throw new FileNotFoundException(String.format("The file '%s' doesn't exist.", pemFile.getAbsolutePath()));
-        }
-        PemReader reader = new PemReader(new FileReader(pemFile));
-        PemObject pemObject = reader.readPemObject();
-        byte[] content = pemObject.getContent();
-        reader.close();
-        return content;
+    public static PrivateKey KeyFromFile(File candidate_key_file) throws Exception, FileNotFoundException, IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+        return AmazingPrivateKeyReader.KeyFromFile(candidate_key_file);
     }
 
-    public static ECPrivateKey KeyFromFile(File candidate_key_file) throws FileNotFoundException, IOException{
+    /*
+    This function tries to load the certificates from standard file locations.
+    If those files do not exist an exception is thrown to indicate that.
 
-        byte [] key_bytes = parsePEMFile(candidate_key_file);
+    This function should run when the app starts and whenever the user picks other credentials and clicks to save the new ones.
+     */
+    public static void LoadCertificates() throws FileNotFoundException, IOException {
+
+        // loading my private key
+        File my_key_file = new File(absolute_path,my_key_path);
+        try {
+            my_key = AmazingPrivateKeyReader.KeyFromFile(my_key_file);
+            Log.d("CRED LOADING","The private key has been loaded successfully!");
+        } catch (Exception e) {
+            Log.d("CRED LOADING","The private key could not be loaded from the file!");
+            throw new RuntimeException(e);
+        }
+
+        // loading my certificate
+        File my_cert_file = new File(absolute_path,my_cert_path);
+        FileInputStream certFileInputStream = new FileInputStream(my_cert_file);
+        try {
+            Log.d("CRED LOADING","Will now try load the user certificate using X509 standard!");
+            // CertificateFactory.getInstance("X509");
+            CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
+            my_cert = (X509Certificate) certificateFactory.generateCertificate(certFileInputStream);
+            certFileInputStream.close();
+            Log.d("CRED LOADING","The user certificate has been loaded successfully!");
+        } catch (CertificateException e) {
+            Log.d("CRED LOADING","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
+            throw new RuntimeException(e);
+        }
+
+        // loading the CA's certificate
+        File ca_cert_file = new File(absolute_path,ca_cert_path);
+        FileInputStream caCertFileInputStream = new FileInputStream(ca_cert_file);
+        try{
+            CertificateFactory caCertificateFactory = CertificateFactory.getInstance(CertificateStandard);
+            CA_cert = (X509Certificate) caCertificateFactory.generateCertificate(caCertFileInputStream);
+            caCertFileInputStream.close();
+            Log.d("CRED LOADING","The CA certificate has been loaded successfully!");
+        } catch (CertificateException e){
+            Log.d("CRED LOADING","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
+            throw  new RuntimeException(e);
+        }
+
+    }
+
+    /*
+    * TODO: Implement this function to check certificate issuer and CN and private key matching cert
+    * */
+    public static boolean checkMyCreds(){
+        return checkCreds(InterNodeCrypto.CA_cert,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
+    }
+
+    public static boolean checkCreds(X509Certificate CA_certificate, X509Certificate MY_certificate, PrivateKey MY_key){
+        boolean result = true;
+        // TODO: check if the certificate is signed by the CA
+        result = result && CryptoChecks.isCertificateSignedBy(MY_certificate,CA_certificate);
+        // TODO: check if the key can sign the certificate
+        result = result && CryptoChecks.isPrivateKeyForCertificate(MY_key,MY_certificate);
+        return result;
+    }
+
+    public static String getCertDetails(@NonNull File certificate) throws FileNotFoundException {
+        X509Certificate temp_cert = null;
+        try{
+            // File certFile = new File(certificate.toString());
+            // We can't read this using input stream?
+            FileInputStream fileInputStream = new FileInputStream(certificate);
+            CertificateFactory caCertificateFactory = CertificateFactory.getInstance(CertificateStandard);
+            temp_cert = (X509Certificate) caCertificateFactory.generateCertificate(fileInputStream);
+            fileInputStream.close();
+            Log.d("CRED DETAILS","The certificate has been loaded successfully!");
+        } catch (CertificateException e){
+            Log.d("CRED DETAILS","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
+            throw  new RuntimeException(e);
+        } catch (FileNotFoundException e){
+            Log.d("CRED DETAILS","The input file could not be retrieved!");
+            throw new FileNotFoundException();
+        } catch (IOException e) {
+            Log.d("CRED DETAILS","The file input stream on the certificate could not be closed!");
+            throw new RuntimeException(e);
+        }
+        return getCertDetails(temp_cert);
+    }
+
+    /*
+    TODO: Implement this function so that the details of the certificate are return as a String (issuer, owner, etc.)
+    */
+    public static String getCertDetails(@NonNull X509Certificate certificate){
+        if (certificate.getSubjectDN() == null){
+            Log.d("CRED DETAILS", "This certificate has no principal! Attempting to send issuer instead!");
+            if( certificate.getIssuerDN() != null ) {
+                return "Issuer: " + certificate.getIssuerDN().toString() + '\n';
+
+            }
+            else{
+                Log.d("CRED DETAILS","This certificate has now issuer either!");
+                return "";
+            }
+        }
+        else{
+            Log.d("CRED DETAILS","Successfully retrieved Subject DN");
+            return "Subject: " + certificate.getSubjectDN().toString() + '\n';
+        }
+    }
+
+}
+
+/* OLD CODE FOR KEY FROM FILE FOR READING THE PRIVATE WHICH WAS NOT WORKING
+
+public static PrivateKey KeyFromFile(File candidate_key_file) throws Exception, FileNotFoundException, IOException, InvalidKeySpecException, NoSuchAlgorithmException {
+
+// java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+
+        // byte [] key_bytes = parsePEMFile(candidate_key_file);
         /*byte [] candidate_key_bytes = new byte[(int)candidate_key_file.length()];
         FileInputStream CandidateKeyFileInputStream = new FileInputStream(candidate_key_file);
         CandidateKeyFileInputStream.read(candidate_key_bytes);
-        CandidateKeyFileInputStream.close();*/
+        CandidateKeyFileInputStream.close();
 
+        /*
         PrivateKey privateKey = null;
         try {
-            KeyFactory kf = KeyFactory.getInstance("EC");
+            KeyFactory kf = KeyFactory.getInstance("EC","BC");
             EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(key_bytes);
             privateKey = kf.generatePrivate(keySpec);
         } catch (NoSuchAlgorithmException e) {
             Log.d("SIMPLE KEY ENCODING","Could not reconstruct the private key, the given algorithm could not be found.");
             e.printStackTrace();
+            throw new NoSuchAlgorithmException(e);
         } catch (InvalidKeySpecException e) {
             Log.d("SIMPLE KEY ENCODING","Could not reconstruct the private key");
             e.printStackTrace();
+            throw new InvalidKeySpecException(e);
+        } catch (NoSuchProviderException e) {
+            e.printStackTrace();
+            throw new RuntimeException(e);
         }
 
         Log.d("SIMPLE KEY ENCODING","The private key is not = " + privateKey.toString() );
 
         return (ECPrivateKey) privateKey;
+
+
         /*
         // Problem: Here there is a parsing error if we try to get the keySpec with:
         // PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(my_key_bytes);
@@ -242,133 +343,6 @@ public class InterNodeCrypto {
             throw new RuntimeException(e);
         }
 
-        return result;*/
+        return result;
 
-    }
-
-    /*
-    This function tries to load the certificates from standard file locations.
-    If those files do not exist an exception is thrown to indicate that.
-
-    This function should run when the app starts and whenever the user picks other credentials and clicks to save the new ones.
-     */
-    public static void LoadCertificates() throws FileNotFoundException, IOException {
-
-        // loading my private key
-        /*
-        File my_key_file = new File(absolute_path,my_key_path);
-        byte [] my_key_bytes = new byte[(int)my_key_file.length()];
-        FileInputStream keyFileInputStream = new FileInputStream(my_key_file);
-        keyFileInputStream.read(my_key_bytes);
-        keyFileInputStream.close();
-        PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(my_key_bytes);
-        KeyFactory keyFactory;
-        try {
-            keyFactory = KeyFactory.getInstance(CryptoAlgorithm);
-            my_key = (ECPrivateKey) keyFactory.generatePrivate(keySpec);
-            Log.d("CRED LOADING","The private key has been loaded successfully!");
-        } catch (NoSuchAlgorithmException e) {
-            Log.d("CRED LOADING","The algorithm requested is non-existent! Algorithm name " + CryptoAlgorithm);
-            throw new RuntimeException(e);
-        } catch (InvalidKeySpecException e) {
-            Log.d("CRED LOADING","Invalid key specifications provided for user's private key!");
-            throw new RuntimeException(e);
-        }
-        */
-
-        // loading my certificate
-        File my_cert_file = new File(absolute_path,my_cert_path);
-        FileInputStream certFileInputStream = new FileInputStream(my_cert_file);
-        try {
-            CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
-            my_cert = (X509Certificate) certificateFactory.generateCertificate(certFileInputStream);
-            certFileInputStream.close();
-            Log.d("CRED LOADING","The user certificate has been loaded successfully!");
-        } catch (CertificateException e) {
-            Log.d("CRED LOADING","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
-            throw new RuntimeException(e);
-        }
-
-        // loading the CA's certificate
-        File ca_cert_file = new File(absolute_path,ca_cert_path);
-        FileInputStream caCertFileInputStream = new FileInputStream(ca_cert_file);
-        try{
-            CertificateFactory caCertificateFactory = CertificateFactory.getInstance(CertificateStandard);
-            CA_cert = (X509Certificate) caCertificateFactory.generateCertificate(caCertFileInputStream);
-            caCertFileInputStream.close();
-            Log.d("CRED LOADING","The CA certificate has been loaded successfully!");
-        } catch (CertificateException e){
-            Log.d("CRED LOADING","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
-            throw  new RuntimeException(e);
-        }
-
-    }
-
-    /*
-    * TODO: Implement this function to check certificate issuer and CN and private key matching cert
-    * */
-    public static boolean checkMyCreds(){
-        return checkCreds(InterNodeCrypto.CA_cert,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
-    }
-
-    public static boolean checkCreds(X509Certificate CA_certificate, X509Certificate MY_certificate, ECPrivateKey MY_key){
-        // TODO: check if the certificate is signed by the CA
-
-        // TODO: check if the key can sign the certificate
-
-        return true;
-    }
-
-    public static String getCertDetails(@NonNull File certificate) throws FileNotFoundException {
-        X509Certificate temp_cert = null;
-        try{
-            // File certFile = new File(certificate.toString());
-            // We can't rread this using input stream?
-            FileInputStream fileInputStream = new FileInputStream(certificate);
-            CertificateFactory caCertificateFactory = CertificateFactory.getInstance(CertificateStandard);
-            temp_cert = (X509Certificate) caCertificateFactory.generateCertificate(fileInputStream);
-            fileInputStream.close();
-            Log.d("CRED DETAILS","The certificate has been loaded successfully!");
-        } catch (CertificateException e){
-            Log.d("CRED DETAILS","The certificate standard requested from CertificateFactory doesn't exist: " + CertificateStandard);
-            throw  new RuntimeException(e);
-        } catch (FileNotFoundException e){
-            Log.d("CRED DETAILS","The input file could not be retrieved!");
-            throw new FileNotFoundException();
-        } catch (IOException e) {
-            Log.d("CRED DETAILS","The file input stream on the certificate could not be closed!");
-            throw new RuntimeException(e);
-        }
-
-        return getCertDetails(temp_cert);
-    }
-
-    /*
-    TODO: Implement this function so that the details of the certificate are return as a String (issuer, owner, etc.)
-    */
-    public static String getCertDetails(@NonNull X509Certificate certificate){
-        if (certificate == null){
-            Log.d("CRED DETAILS","How does null certificate reach this point!");
-            return "";
-        }
-        if (certificate.getSubjectDN() == null){
-            Log.d("CRED DETAILS", "This certificate has no prinicpal! Attempting to send issuer instead!");
-            if( certificate.getIssuerDN() != null ) {
-                return certificate.getIssuerDN().toString();
-            }
-            else{
-                Log.d("CRED DETAILS","This certificate has now issuer either!");
-                return "";
-            }
-        }
-        // Now we need to put the details in a String
-        // TODO: put more details other than the issuer DN
-        String answer = "";
-        answer += "Subject: " + certificate.getSubjectDN().toString() + '\n';
-
-        Log.d("CRED DETAILS","Successfully retrieved subject DN");
-
-        return answer;
-    }
-
-}
+ */

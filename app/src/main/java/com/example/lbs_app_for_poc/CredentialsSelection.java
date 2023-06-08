@@ -35,8 +35,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
-import java.security.interfaces.ECPrivateKey;
 import java.util.Objects;
 
 public class CredentialsSelection extends Fragment {
@@ -53,34 +53,28 @@ public class CredentialsSelection extends Fragment {
                     new ActivityResultCallback<Uri>(){
                         @Override
                         public void onActivityResult(Uri uri){
-                            // Handle the returned Uri
-                            Log.d("CRED FILE LOADING","Now handling the selected URI");
-                            if(uri == null){
-                                Log.d("CRED FILE LOADING","The selected URI is null!");
+
+                            if(uri==null){
+                                Log.d("CRED FILE LOADING","No file selected!");
                                 return;
                             }
 
+                            // Handle the returned Uri
+                            Log.d("CRED FILE LOADING","Now handling the selected URI = " + uri.toString() );
+
                             if(Objects.equals(target_file, "CAcert")){
-                                Log.d("CA_CRED","We are trying to load the CAcert! uri = " + uri.getPath() );
+                                Log.d("CA CERTIFICATE LOADING","We are trying to load the CAcert! uri = " + uri.getPath() );
                                 try {
 
                                     String pathFromFileChooser = AnotherFileChooser.getPath(getContext(),uri);
-                                    // String pathFromFileChooser = FileChooser.ContentProviderGetPath(getContext(),uri);
-                                    // String pathFromFileChooser = FileChooser.getPath(getContext(),uri);
-                                    Log.d("CA_CRED","The resolved path from the AnotherFileChooser class is "+pathFromFileChooser);
+                                    Log.d("CA CERTIFICATE LOADING","The resolved path from the AnotherFileChooser class is "+pathFromFileChooser);
+
+                                    if(pathFromFileChooser==null){
+                                        Log.d("CA CERTIFICATE LOADING","The path for the CA certificate is null!");
+                                        return;
+                                    }
 
                                     CAcertFile = new File(pathFromFileChooser);
-                                    if(CAcertFile==null){
-                                        Log.d("CA_CRED","The CAcertFile from pathFromFileChooser is null");
-                                        Log.d("CA_CRED","Now will try to give the path to a FileInputStream instead to see if we can read it!");
-                                        try {
-                                            FileInputStream CAcertFIS = new FileInputStream(pathFromFileChooser);
-                                            Log.d("CA_CRED","Successfully loaded path on FIS! Use FIS to read the file from path instead!");
-                                        } catch (FileNotFoundException e) {
-                                            Log.d("CA_CRED","Failing to open it with FIS directly as well!");
-                                            throw new RuntimeException(e);
-                                        }
-                                    }
 
                                     /*allowAccess1stAttempt();
 
@@ -91,50 +85,44 @@ public class CredentialsSelection extends Fragment {
                                     }*/
 
                                     // CAcertFile = new File(uri.toString());
+
                                 }
                                 catch (RuntimeException e){
-                                    Log.d("CRED FILE LOADING","Couldn't get a path from the URI selected!");
+                                    Log.d("CA CERTIFICATE LOADING","Couldn't get a path from the URI selected!");
                                     e.printStackTrace();
                                     return;
                                 }
-                                Log.d("CA_CRED","The file is loaded! " + CAcertFile.toString() );
+                                Log.d("CA CERTIFICATE LOADING","The file is loaded! " + CAcertFile.toString() );
                                 try {
                                     CAdetailsTV.setText( InterNodeCrypto.getCertDetails(CAcertFile) );
                                     CAdetailsTV.setBackgroundColor(Color.GREEN);
                                 }
                                 catch (Exception e){
-                                    CAdetailsTV.setText( "Failed to use the selected certificate file!" );
+                                    CAdetailsTV.setText( "Failed to use file!" );
                                     CAdetailsTV.setBackgroundColor(Color.RED);
-                                    Log.d("CA_CRED","Failed to get certificate details!");
+                                    Log.d("CA CERTIFICATE CHECK","Failed to get certificate details!");
                                     e.printStackTrace();
                                 }
-                                Log.d("CRED FILE LOADING","Saved to CAcertFile!");
+                                Log.d("CRED FILE LOADING","SUCCESS: Saved CAcertFile!");
                                 return;
                             }
                             if(Objects.equals(target_file, "MYcert")){
-                                Log.d("MY_CRED","We are trying to load MYcert! uri = " + uri.getPath() );
+                                Log.d("MY CERTIFICATE FILE LOADING","We are trying to load MYcert! uri = " + uri.getPath() );
                                 try {
                                     String pathFromFileChooser = AnotherFileChooser.getPath(getContext(),uri);
-                                    Log.d("MY_CRED","The resolved path from the AnotherFileChooser class is "+pathFromFileChooser);
-                                    certFile = new File(pathFromFileChooser);
-                                    if(certFile==null){
-                                        Log.d("MY_CRED","The certFile from pathFromFileChooser is null");
-                                        Log.d("MY_CRED","Now will try to give the path to a FileInputStream instead to see if we can read it!");
-                                        try {
-                                            FileInputStream MYcertFIS = new FileInputStream(pathFromFileChooser);
-                                            Log.d("MY_CRED","Successfully loaded path on FIS! Use FIS to read the file from path instead!");
-                                        } catch (FileNotFoundException e) {
-                                            Log.d("MY_CRED","Failing to open it with FIS directly as well!");
-                                            throw new RuntimeException(e);
-                                        }
+                                    Log.d("MY CERTIFICATE FILE LOADING","The resolved path from the AnotherFileChooser class is "+pathFromFileChooser);
+                                    if(pathFromFileChooser==null){
+                                        Log.d("MY CERTIFICATE LOADING","The path for MY certificate is null!");
+                                        return;
                                     }
+                                    certFile = new File(pathFromFileChooser);
                                 }
                                 catch (RuntimeException e){
-                                    Log.d("CRED FILE LOADING","Couldn't get a path from the URI selected!");
+                                    Log.d("MY CERTIFICATE FILE LOADING","Couldn't get a path from the URI selected!");
                                     e.printStackTrace();
                                     return;
                                 }
-                                Log.d("MY_CRED","The file is loaded! " + certFile.toString() );
+                                Log.d("MY CERTIFICATE FILE LOADING","The file is loaded! " + certFile.toString() );
                                 try {
                                     MYdetailsTV.setText( InterNodeCrypto.getCertDetails(certFile) );
                                     MYdetailsTV.setBackgroundColor(Color.GREEN);
@@ -145,47 +133,43 @@ public class CredentialsSelection extends Fragment {
                                     MYdetailsTV.setBackgroundColor(Color.RED);
                                     e.printStackTrace();
                                 }
-                                Log.d("CRED FILE LOADING","Saved to certFile!");
+                                Log.d("CRED FILE LOADING","SUCCESS: Saved to certFile!");
                                 return;
                             }
                             if(Objects.equals(target_file, "MYkey")){
-                                Log.d("MY_KEY","We are trying to load MYkey! uri = " + uri.getPath() );
+                                Log.d("MY KEY FILE LOADING","We are trying to load MYkey! uri = " + uri.getPath() );
                                 try {
                                     String pathFromFileChooser = AnotherFileChooser.getPath(getContext(),uri);
                                     Log.d("MY_KEY","The resolved path from the AnotherFileChooser class is " + pathFromFileChooser);
-                                    keyFile = new File(pathFromFileChooser);
-                                    if(keyFile==null){
-                                        Log.d("MY_KEY","The keyFile from pathFromFileChooser is null");
-                                        Log.d("MY_KEY","Now will try to give the path to a FileInputStream instead to see if we can read it!");
-                                        try {
-                                            FileInputStream MYkeyFIS = new FileInputStream(pathFromFileChooser);
-                                            Log.d("MY_KEY","Successfully loaded path on FIS! Use FIS to read the file from path instead!");
-                                        } catch (FileNotFoundException e) {
-                                            Log.d("MY_KEY","Failing to open it with FIS directly as well!");
-                                            throw new RuntimeException(e);
-                                        }
+                                    if(pathFromFileChooser==null){
+                                        Log.d("MY KEY FILE LOADING","The path for the MY KEY FILE is null!");
+                                        return;
                                     }
+                                    keyFile = new File(pathFromFileChooser);
                                 }
                                 catch (RuntimeException e){
-                                    Log.d("CRED FILE LOADING","Couldn't get a path from the URI selected!");
+                                    Log.d("MY KEY FILE LOADING","Couldn't get a path from the URI selected!");
                                     e.printStackTrace();
                                     return;
                                 }
-                                Log.d("MY_KEY","The file is loaded! " +  keyFile.toString() );
+                                Log.d("MY KEY FILE LOADING","The file is loaded! " +  keyFile.toString() );
                                 try {
+                                    // Here we attempt to load the PrivateKey object from the file before reporting
+                                    // to the user that we have had success loading it.
+                                    Log.d("KEY FILE LOADING","ATTENTION: testing key file reading!");
+                                    PrivateKey my_private_key = InterNodeCrypto.KeyFromFile(keyFile);
+                                    Log.d("KEY FILE LOADING","ATTENTION: the private key file has algorithm " + my_private_key.getAlgorithm() );
                                     MYkeydetailsTV.setText( "Selected KEY loaded!" );
                                     MYkeydetailsTV.setBackgroundColor(Color.GREEN);
                                 }
                                 catch (Exception e){
                                     MYkeydetailsTV.setText( "Selected KEY could NOT be loaded!" );
                                     MYkeydetailsTV.setBackgroundColor(Color.RED);
-                                    Log.d("MY_KEY","Failed to get Key details!");
+                                    Log.d("MY KEY FILE LOADING","Failed to get Key details!");
                                     e.printStackTrace();
                                 }
-                                Log.d("CRED FILE LOADING","Saved to keyFile!");
-                                return;
+                                Log.d("CRED FILE LOADING","SUCCESS: Saved to keyFile!");
                             }
-
                         }
                     });
         }
@@ -248,6 +232,14 @@ public class CredentialsSelection extends Fragment {
             CAdetailsTV.setText("No CA certificate loaded!");
         }
         else{
+            Log.d("CA CERTIFICATE PRE-LOADING","Will now try to load the CA certificate file since InterNodeCrypto.CA_cert is not null!");
+            try {
+                CAcertFile = new File(InterNodeCrypto.ca_cert_path);
+            }
+            catch (Exception e){
+                Log.d("CA CERTIFICATE PRE-LOADING","FAILURE: Although the CA certificate is not null the path used for its file can't be used!");
+                e.printStackTrace();
+            }
             CAdetailsTV.setBackgroundColor(Color.GREEN);
             CAdetailsTV.setText( InterNodeCrypto.getCertDetails(InterNodeCrypto.CA_cert) );
         }
@@ -270,6 +262,14 @@ public class CredentialsSelection extends Fragment {
             MYdetailsTV.setText("No own certificate loaded!");
         }
         else{
+            Log.d("MY CERTIFICATE PRE-LOADING","Will now try to load MY certificate file since InterNodeCrypto.my_cert is not null!");
+            try {
+                certFile = new File(InterNodeCrypto.my_cert_path);
+            }
+            catch (Exception e){
+                Log.d("MY CERTIFICATE PRE-LOADING","FAILURE: Although MY certificate is not null the path used for its file can't be used!");
+                e.printStackTrace();
+            }
             MYdetailsTV.setBackgroundColor(Color.GREEN);
             MYdetailsTV.setText( InterNodeCrypto.getCertDetails(InterNodeCrypto.my_cert) );
         }
@@ -292,6 +292,14 @@ public class CredentialsSelection extends Fragment {
             MYkeydetailsTV.setText("No key loaded!");
         }
         else{
+            Log.d("MY KEY PRE-LOADING","Will now try to load MY KEY file since InterNodeCrypto.my_key is not null!");
+            try {
+                keyFile = new File(InterNodeCrypto.my_key_path);
+            }
+            catch (Exception e){
+                Log.d("MY KEY PRE-LOADING","FAILURE: Although MY KEY is not null the path used for its file can't be used!");
+                e.printStackTrace();
+            }
             MYkeydetailsTV.setBackgroundColor(Color.GREEN);
             // TODO: Add details for key (maybe the name on the key)
             MYkeydetailsTV.setText( "LOADED" );
@@ -314,23 +322,33 @@ public class CredentialsSelection extends Fragment {
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
+
+                        if(CAcertFile == null || certFile == null || keyFile == null) {
+                            Log.d("CREDS CHECK","THERE IS AN EMPTY CREDENTIAL!");
+                            Toast.makeText(getContext(),"Error: Some credential is not provided!", Toast.LENGTH_LONG).show();
+                            return;
+                        }
+
                         // Get the certificates and key from the files
                         X509Certificate cand_CA_cert = null;
                         X509Certificate cand_MY_cert = null;
-                        ECPrivateKey cand_MY_key = null;
+                        PrivateKey cand_MY_key = null;
                         try {
                             cand_CA_cert = InterNodeCrypto.CertFromFile(CAcertFile);
                             cand_MY_cert = InterNodeCrypto.CertFromFile(certFile);
                             cand_MY_key = InterNodeCrypto.KeyFromFile(keyFile);
+                            Log.d("CREDS CHECK","SUCCESS: All keys and certificates have been loaded from their files!");
                         } catch (IOException e) {
                             Log.d("CREDS CHECK","There was an error retrieving certificates and/or the key from the selected files!");
+                            throw new RuntimeException(e);
+                        } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                         // Check the credentials
                         if( InterNodeCrypto.checkCreds(cand_CA_cert,cand_MY_cert,cand_MY_key) ){
                             Log.d("CREDS SAVE","The credentials check out! Now saving the files!");
                             InterNodeCrypto.SaveCertificates(CAcertFile,certFile,keyFile);
-                            Log.d("CREDS SAVE","The NEW credentials must have been saved!");
+                            Log.d("CREDS SAVE","The NEW credentials must have been saved in the InterNodeCrypto class!");
                             try {
                                 InterNodeCrypto.LoadCertificates();
                                 Log.d("CREDS LOADING","Credentials now successfully loaded from the new files!");
