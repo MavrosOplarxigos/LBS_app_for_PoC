@@ -52,14 +52,25 @@ public class InterNodeCrypto {
 
         try (FileInputStream fis = new FileInputStream(source);
              FileOutputStream fos = new FileOutputStream(destFile)) {
-            byte[] buffer = new byte[4096];
+            byte[] buffer = new byte[(int) source.length()];
             int bytesRead;
             while ((bytesRead = fis.read(buffer)) != -1) {
                 fos.write(buffer, 0, bytesRead);
             }
+            fos.flush();
+
         } catch (IOException e) {
             Log.d("CRED LOADING","Problem when trying to copy the file " + source.getAbsolutePath() );
             e.printStackTrace();
+        }
+
+        // Compare file sizes
+        long sourceSize = source.length();
+        long destSize = destFile.length();
+        if (sourceSize == destSize) {
+            Log.d("CRED LOADING", "File copied successfully");
+        } else {
+            Log.d("CRED LOADING", "File copy failed. Source size: " + sourceSize + ", Destination size: " + destSize);
         }
 
     }
@@ -72,6 +83,8 @@ public class InterNodeCrypto {
     Then this function copies these files to a standard path and calls LoadCertificates to load them.
      */
     public static void SaveCertificates(File key, File cert, File caCert) {
+
+        Log.d("Save Certs","Entering the save certficates function!");
 
         // Copy the files to the locations we want them to be
         copyFile(key,new File(absolute_path,my_key_path));
@@ -120,6 +133,8 @@ public class InterNodeCrypto {
     This function should run when the app starts and whenever the user picks other credentials and clicks to save the new ones.
      */
     public static void LoadCertificates() throws FileNotFoundException, IOException {
+
+        Log.d("Load Certificates function!","Entered the load certificates funciton!");
 
         // loading my private key
         File my_key_file = new File(absolute_path,my_key_path);
@@ -170,7 +185,7 @@ public class InterNodeCrypto {
 
     public static boolean checkCreds(X509Certificate CA_certificate, X509Certificate MY_certificate, PrivateKey MY_key){
         boolean result = true;
-        // TODO: check if the certificate is signed by the CA
+        // DONE: check if the certificate is signed by the CA
         result = result && CryptoChecks.isCertificateSignedBy(MY_certificate,CA_certificate);
         // TODO: check if the key can sign the certificate
         result = result && CryptoChecks.isPrivateKeyForCertificate(MY_key,MY_certificate);

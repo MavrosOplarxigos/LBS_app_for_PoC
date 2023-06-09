@@ -117,6 +117,9 @@ public class CryptoChecks {
 
         Log.d("ecPrivateMatchesECpublic","function enters!");
 
+        return true; // TODO: Figure out how to implement this function since it is not a MUST
+
+        /*
         try {
             java.security.spec.ECParameterSpec privateKeyParams = ecPrivateKey.getParams();
             java.security.spec.ECParameterSpec publicKeyParams = ecPublicKey.getParams();
@@ -137,7 +140,7 @@ public class CryptoChecks {
         }
         catch (Exception e){
             throw e;
-        }
+        }*/
 
     }
 

@@ -347,7 +347,7 @@ public class CredentialsSelection extends Fragment {
                         // Check the credentials
                         if( InterNodeCrypto.checkCreds(cand_CA_cert,cand_MY_cert,cand_MY_key) ){
                             Log.d("CREDS SAVE","The credentials check out! Now saving the files!");
-                            InterNodeCrypto.SaveCertificates(CAcertFile,certFile,keyFile);
+                            InterNodeCrypto.SaveCertificates(keyFile,certFile,CAcertFile);
                             Log.d("CREDS SAVE","The NEW credentials must have been saved in the InterNodeCrypto class!");
                             try {
                                 InterNodeCrypto.LoadCertificates();

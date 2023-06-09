@@ -10,13 +10,15 @@ import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECFieldElement;
 import org.bouncycastle.math.ec.ECFieldElement.Fp;
 
+// TODO: This class is not used figure out how to use it in the future to facilitate comparing the ECPrivate Key to ECPublic Key to see if they are correspoinding to one another.
 public class ECPointConverter {
 
     public static org.bouncycastle.math.ec.ECPoint getBouncyCastleECPointFromJavaSecurityPublic(java.security.spec.ECPoint javaEcPoint, java.security.interfaces.ECPublicKey ecPublicKey) {
         try {
             org.bouncycastle.math.ec.ECCurve Curve = getECCurveFromPublicKey(ecPublicKey);
-            byte[] pointBytes = convertJavaSecurityECPoitToByteArray(javaEcPoint);
-            return convertByteArrayToBouncyCastle(pointBytes, Curve);
+            // byte[] pointBytes = convertJavaSecurityECPoitToByteArray(javaEcPoint);
+            // return convertByteArrayToBouncyCastle(pointBytes, Curve);
+            return null;
         }
         catch (Exception e){
             throw e;
@@ -59,24 +61,17 @@ public class ECPointConverter {
         return namedCurveSpec.getCurve();*/
     }
 
-    private static ECCurve extractCurve(ECParameterSpec ecSpec) {
-        if (ecSpec instanceof ECNamedCurveSpec) {
-            ECNamedCurveSpec namedCurveSpec = (ECNamedCurveSpec) ecSpec;
-            java.security.spec.EllipticCurve ellipticCurve = namedCurveSpec.getCurve();
-            return convertToBouncyCastleCurve(ellipticCurve);
-        }
-        throw new IllegalArgumentException("Unsupported ECParameterSpec implementation: " + ecSpec.getClass().getName());
+    public static ECCurve extractCurve(ECParameterSpec ecSpec) {
+        EllipticCurve ellipticCurve = ecSpec.getCurve();
+        return convertToBouncyCastleCurve(ellipticCurve);
     }
 
-    private static ECCurve convertToBouncyCastleCurve(java.security.spec.EllipticCurve ellipticCurve) {
-        java.security.spec.ECField field = ellipticCurve.getField();
-        if (field instanceof java.security.spec.ECFieldFp) {
-            java.math.BigInteger p = ((java.security.spec.ECFieldFp) field).getP();
-            java.math.BigInteger a = ellipticCurve.getA();
-            java.math.BigInteger b = ellipticCurve.getB();
-            return new ECCurve.Fp(p, a, b);
-        }
-        throw new IllegalArgumentException("Unsupported ECField implementation: " + field.getClass().getName());
+    public static ECCurve convertToBouncyCastleCurve(EllipticCurve ellipticCurve) {
+        BigInteger p = ellipticCurve.getA();
+        BigInteger a = ellipticCurve.getA();
+        BigInteger b = ellipticCurve.getB();
+        ECCurve.Fp curve = new ECCurve.Fp(p, a, b);
+        return curve;
     }
 
     public static org.bouncycastle.math.ec.ECCurve getECCurveFromPublicKey(java.security.interfaces.ECPublicKey publicKey) {
