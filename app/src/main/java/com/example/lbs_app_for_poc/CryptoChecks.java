@@ -3,6 +3,7 @@ import android.util.Log;
 
 import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
 import org.bouncycastle.asn1.pkcs.RSAPublicKey;
+import org.bouncycastle.math.ec.ECPoint;
 // import org.bouncycastle.jce.interfaces.ECPointEncoder;
 // import org.bouncycastle.jce.interfaces.ECPrivateKey;
 // import org.bouncycastle.jce.interfaces.ECPublicKey;
@@ -80,8 +81,8 @@ public class CryptoChecks {
                 throw e;
             }
 
-            ECParameterSpec privateKeyParams = ecPrivateKey.getParams();
-            ECParameterSpec publicKeyParams = ecPublicKey.getParams();
+            java.security.spec.ECParameterSpec privateKeyParams = ecPrivateKey.getParams();
+            java.security.spec.ECParameterSpec publicKeyParams = ecPublicKey.getParams();
 
             Log.d("PRIVATE KEY FOR CERT CHECK","privateKeyParams g = " + privateKeyParams.getGenerator().toString() );
             Log.d("PRIVATE KEY FOR CERT CHECK","publicKeyParams g = " + publicKeyParams.getGenerator().toString() );
@@ -116,9 +117,32 @@ public class CryptoChecks {
 
         Log.d("ecPrivateMatchesECpublic","function enters!");
 
-        return false;
-        // ECPoint privateKeyPoint = privateKey.getParameters().getG().multiply(privateKey.getD());
-        // ECPoint publicKeyPoint = publicKey.getQ();
+        try {
+            java.security.spec.ECParameterSpec privateKeyParams = ecPrivateKey.getParams();
+            java.security.spec.ECParameterSpec publicKeyParams = ecPublicKey.getParams();
+
+            // compute public key point
+            java.security.spec.ECPoint generatorPublic = publicKeyParams.getGenerator();
+            org.bouncycastle.math.ec.ECPoint BouncyGeneratorPublic = ECPointConverter.getBouncyCastleECPointFromJavaSecurityPublic(generatorPublic, ecPublicKey);
+            BigInteger d_public = ecPublicKey.getW().getAffineX();
+            org.bouncycastle.math.ec.ECPoint publicKeyPoint = BouncyGeneratorPublic.multiply(d_public);
+
+            // compute private key point
+            java.security.spec.ECPoint generatorPrivate = privateKeyParams.getGenerator();
+            org.bouncycastle.math.ec.ECPoint BouncyGeneratorPrivate = ECPointConverter.getBouncyCastleECPointFromJavaSecurityPrivate(generatorPrivate, ecPrivateKey);
+            BigInteger d_private = ecPrivateKey.getS();
+            org.bouncycastle.math.ec.ECPoint privateKeyPoint = BouncyGeneratorPrivate.multiply(d_private);
+
+            return publicKeyPoint.equals(privateKeyPoint);
+        }
+        catch (Exception e){
+            throw e;
+        }
+
+    }
+
+    // ECPoint privateKeyPoint = privateKey.getParameters().getG().multiply(privateKey.getD());
+    // ECPoint publicKeyPoint = publicKey.getQ();
         /*if( privateKeyPoint.equals(publicKeyPoint) ){
             return true;
         }
@@ -127,9 +151,9 @@ public class CryptoChecks {
         Log.d("EC POINT CHECK","NOT EQUAL POINTS private is y = " + privateKeyPoint.getYCoord().toBigInteger().toString() + " public is y = " + publicKeyPoint.getYCoord().toBigInteger().toString() );
         return false;*/
 
-        // privateKey.getParams().getGenerator().multiply(privateKey.getS());
+    // privateKey.getParams().getGenerator().multiply(privateKey.getS());
 
-        // ECCurve privateCurve = privateKey.getParameters().getCurve();
+    // ECCurve privateCurve = privateKey.getParameters().getCurve();
         /*
         ECPointEncoder encoder =
         byte[] privateKeyBytes = privateKey.getEncoded();
@@ -142,7 +166,6 @@ public class CryptoChecks {
         byte[] publicKeyBytes = encoder.encodePoint(publicKey.getQ().normalize());
         return MessageDigest.isEqual(privateKeyBytes, publicKeyBytes);
         */
-    }
 
     //    bcprov-jdk18on-173.jar
     //    bcprov-ext-jdk18on-173.jar

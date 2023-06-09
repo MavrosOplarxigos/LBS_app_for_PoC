@@ -1,16 +1,40 @@
 package com.example.lbs_app_for_poc;
 import java.math.BigInteger;
+import java.security.spec.ECParameterSpec;
 import java.security.spec.ECPoint;
+import java.security.spec.EllipticCurve;
 // import org.bouncycastle.math.ec.ECPoint.Fp;
+import org.bouncycastle.jcajce.provider.asymmetric.util.EC5Util;
+import org.bouncycastle.jce.spec.ECNamedCurveSpec;
+import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.math.ec.ECFieldElement;
 import org.bouncycastle.math.ec.ECFieldElement.Fp;
 
 public class ECPointConverter {
 
-    public static org.bouncycastle.math.ec.ECPoint getBouncyCastleECPointFromJavaSecurity(java.security.spec.ECPoint javaEcPoint) {
-        return null;
+    public static org.bouncycastle.math.ec.ECPoint getBouncyCastleECPointFromJavaSecurityPublic(java.security.spec.ECPoint javaEcPoint, java.security.interfaces.ECPublicKey ecPublicKey) {
+        try {
+            org.bouncycastle.math.ec.ECCurve Curve = getECCurveFromPublicKey(ecPublicKey);
+            byte[] pointBytes = convertJavaSecurityECPoitToByteArray(javaEcPoint);
+            return convertByteArrayToBouncyCastle(pointBytes, Curve);
+        }
+        catch (Exception e){
+            throw e;
+        }
     }
 
-    public org.bouncycastle.math.ec.ECPoint convertByteArrayToBouncyCastle(byte[] byteArray, org.bouncycastle.math.ec.ECCurve curve) {
+    public static org.bouncycastle.math.ec.ECPoint getBouncyCastleECPointFromJavaSecurityPrivate(java.security.spec.ECPoint javaEcPoint, java.security.interfaces.ECPrivateKey ecPrivateKey) {
+        try {
+            org.bouncycastle.math.ec.ECCurve Curve = getECCurveFromPrivateKey(ecPrivateKey);
+            byte[] pointBytes = convertJavaSecurityECPoitToByteArray(javaEcPoint);
+            return convertByteArrayToBouncyCastle(pointBytes, Curve);
+        }
+        catch (Exception e){
+            throw e;
+        }
+    }
+
+    public static org.bouncycastle.math.ec.ECPoint convertByteArrayToBouncyCastle(byte[] byteArray, org.bouncycastle.math.ec.ECCurve curve) {
         int length = byteArray.length / 2;
         byte[] xBytes = new byte[length];
         byte[] yBytes = new byte[length];
@@ -26,21 +50,64 @@ public class ECPointConverter {
         return curve.createPoint(xFieldElement.toBigInteger(), yFieldElement.toBigInteger());
     }
 
-    public org.bouncycastle.math.ec.ECCurve getECCurveFromPrivateKey(java.security.interfaces.ECPrivateKey privateKey) {
-        java.security.spec.ECParameterSpec ecSpec = privateKey.getParams();
+    public static org.bouncycastle.math.ec.ECCurve getECCurveFromPrivateKey(java.security.interfaces.ECPrivateKey privateKey) {
+        return null;
+        // return EC5Util.convertCurve(privateKey.getParams().getCurve()); // TODO: research why this function gets stuck???
+        /*java.security.spec.ECParameterSpec ecSpec = privateKey.getParams();
         String curveName = ecSpec.getCurve().toString();
         org.bouncycastle.jce.spec.ECNamedCurveParameterSpec namedCurveSpec = org.bouncycastle.jce.ECNamedCurveTable.getParameterSpec(curveName);
-        return namedCurveSpec.getCurve();
+        return namedCurveSpec.getCurve();*/
     }
 
-    public org.bouncycastle.math.ec.ECCurve getECCurveFromPublicKey(java.security.interfaces.ECPublicKey publicKey) {
-        java.security.spec.ECParameterSpec ecSpec = publicKey.getParams();
+    private static ECCurve extractCurve(ECParameterSpec ecSpec) {
+        if (ecSpec instanceof ECNamedCurveSpec) {
+            ECNamedCurveSpec namedCurveSpec = (ECNamedCurveSpec) ecSpec;
+            java.security.spec.EllipticCurve ellipticCurve = namedCurveSpec.getCurve();
+            return convertToBouncyCastleCurve(ellipticCurve);
+        }
+        throw new IllegalArgumentException("Unsupported ECParameterSpec implementation: " + ecSpec.getClass().getName());
+    }
+
+    private static ECCurve convertToBouncyCastleCurve(java.security.spec.EllipticCurve ellipticCurve) {
+        java.security.spec.ECField field = ellipticCurve.getField();
+        if (field instanceof java.security.spec.ECFieldFp) {
+            java.math.BigInteger p = ((java.security.spec.ECFieldFp) field).getP();
+            java.math.BigInteger a = ellipticCurve.getA();
+            java.math.BigInteger b = ellipticCurve.getB();
+            return new ECCurve.Fp(p, a, b);
+        }
+        throw new IllegalArgumentException("Unsupported ECField implementation: " + field.getClass().getName());
+    }
+
+    public static org.bouncycastle.math.ec.ECCurve getECCurveFromPublicKey(java.security.interfaces.ECPublicKey publicKey) {
+        ECParameterSpec ecSpec = publicKey.getParams();
+        ECCurve curve = extractCurve(ecSpec);
+        return curve;
+        //        ECParameterSpec ecSpec = publicKey.getParams();
+//        ECCurve curve = extractCurve(ecSpec);
+//        return curve;
+
+        /*java.security.spec.ECParameterSpec ecSpec = publicKey.getParams();
+        org.bouncycastle.jce.spec.ECNamedCurveParameterSpec namedCurveSpec = org.bouncycastle.jce.ECNamedCurveTable.getParameterSpec(ecSpec.getCurve().toString()); // TODO: Why does calling this function gets stuck in infinite loop?
+        return namedCurveSpec.getCurve();*/
+
+        // return EC5Util.convertCurve(publicKey.getParams().getCurve());
+
+        /*java.security.spec.ECParameterSpec ecSpec = publicKey.getParams();
+        java.security.spec.ECPoint ecPoint = publicKey.getW();
+        org.bouncycastle.jce.spec.ECNamedCurveSpec namedCurveSpec = new org.bouncycastle.jce.spec.ECNamedCurveSpec(ecSpec.getCurve().toString(), ecSpec.getCurve(), ecSpec.getGenerator(), ecSpec.getOrder(), ecSpec.getCofactor());
+        return ECNamedCurveTable.getParameterSpec(namedCurveSpec.getName()).getCurve();*/
+        /*java.security.spec.ECPoint point = org.bouncycastle.jce.ECPointUtil.decodePoint(
+                (EllipticCurve)(publicKey.getParams().getCurve()),
+                convertJavaSecurityECPoitToByteArray(publicKey.getW())
+        );*/
+        /*java.security.spec.ECParameterSpec ecSpec = publicKey.getParams();
         String curveName = ecSpec.getCurve().toString();
         org.bouncycastle.jce.spec.ECNamedCurveParameterSpec namedCurveSpec = org.bouncycastle.jce.ECNamedCurveTable.getParameterSpec(curveName);
-        return namedCurveSpec.getCurve();
+        return namedCurveSpec.getCurve();*/
     }
 
-    public byte[] convertJavaSecurityECPoitToByteArray(java.security.spec.ECPoint javaSecurityPoint) {
+    public static byte[] convertJavaSecurityECPoitToByteArray(java.security.spec.ECPoint javaSecurityPoint) {
         BigInteger x = javaSecurityPoint.getAffineX();
         BigInteger y = javaSecurityPoint.getAffineY();
         byte[] xBytes = x.toByteArray();
