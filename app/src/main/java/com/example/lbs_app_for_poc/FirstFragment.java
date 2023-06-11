@@ -97,12 +97,12 @@ public class FirstFragment extends Fragment {
     public void CredentialsNoticeCheck(){
         // We should also check whether there are certificates or not loaded and report it to the user the first time the app is
         try {
-            InterNodeCrypto.LoadCertificates();
+            InterNodeCrypto.LoadCredentials();
             if(InterNodeCrypto.checkMyCreds()) {
-                Toast.makeText(getContext(), "The loaded credentials are valid!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "The credentials are loaded & ready!", Toast.LENGTH_SHORT).show();
             }
             else{
-                Toast.makeText(getContext(), "The loaded credentials are invalid.\nConsider configuring the credentials first!", Toast.LENGTH_SHORT).show();
+                Toast.makeText(getContext(), "The credentials are not loaded.\nConsider configuring the credentials first!", Toast.LENGTH_SHORT).show();
             }
         }
         catch (Exception e){

@@ -3,6 +3,7 @@ import android.util.Log;
 
 import org.bouncycastle.asn1.pkcs.RSAPrivateKey;
 import org.bouncycastle.asn1.pkcs.RSAPublicKey;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.math.ec.ECPoint;
 // import org.bouncycastle.jce.interfaces.ECPointEncoder;
 // import org.bouncycastle.jce.interfaces.ECPrivateKey;
@@ -10,17 +11,78 @@ import org.bouncycastle.math.ec.ECPoint;
 // import org.bouncycastle.math.ec.ECPoint;
 
 import java.math.BigInteger;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.KeyFactory;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.PublicKey;
 
+import java.security.Security;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.security.interfaces.ECPrivateKey;
 import java.security.interfaces.ECPublicKey;
 import java.security.spec.ECParameterSpec;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 
 
 public class CryptoChecks {
+
+
+    public static boolean isEncryptAndDecryptWorking(X509Certificate certificate, java.security.PrivateKey privateKey){
+
+        // TODO: implement this one
+
+        return true;
+
+    }
+
+    public static boolean isSigningAndVerifyingWorking(X509Certificate certificate, java.security.PrivateKey privateKey) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, SignatureException {
+
+        Log.d("isSigningAndVerifyingWorking","function entered!");
+        // retrieving the public key
+        java.security.PublicKey publicKey = certificate.getPublicKey();
+
+        // tesing data
+        byte[] data = "test_data_1234".getBytes();
+        byte[] false_data = "test_data_1235".getBytes();
+        byte[] false_data2 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".getBytes();
+
+        // Signing
+        Signature signature = Signature.getInstance("SHA1withECDSA","AndroidOpenSSL");
+        signature.initSign(privateKey);
+        signature.update(data);
+        byte[] signed_data = signature.sign();
+
+        // Verifying
+        boolean result;
+        Signature dec_signature = Signature.getInstance("SHA1withECDSA","AndroidOpenSSL");
+        dec_signature.initVerify(publicKey);
+        dec_signature.update(data);
+        result = dec_signature.verify(signed_data); // verify reset the dec_signature to before the initVerify state
+        dec_signature.initVerify(publicKey);
+        dec_signature.update(false_data);
+        result = result && (!dec_signature.verify(signed_data));
+        dec_signature.initVerify(publicKey);
+        dec_signature.update(false_data2);
+        result = result && (!dec_signature.verify(signed_data));
+
+        return result;
+
+    }
 
     public static boolean isCertificateSignedBy(X509Certificate certificate, X509Certificate issuerCertificate) {
         Log.d("is certificate signed by","Function enters!");

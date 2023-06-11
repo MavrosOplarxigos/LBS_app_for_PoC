@@ -345,21 +345,26 @@ public class CredentialsSelection extends Fragment {
                             throw new RuntimeException(e);
                         }
                         // Check the credentials
-                        if( InterNodeCrypto.checkCreds(cand_CA_cert,cand_MY_cert,cand_MY_key) ){
-                            Log.d("CREDS SAVE","The credentials check out! Now saving the files!");
-                            InterNodeCrypto.SaveCertificates(keyFile,certFile,CAcertFile);
-                            Log.d("CREDS SAVE","The NEW credentials must have been saved in the InterNodeCrypto class!");
-                            try {
-                                InterNodeCrypto.LoadCertificates();
-                                Log.d("CREDS LOADING","Credentials now successfully loaded from the new files!");
-                                Toast.makeText(getContext(),"Success! The selected credentials will be used from now on!", Toast.LENGTH_LONG).show();
-                            } catch (IOException e) {
-                                Log.d("CREDS LOADING","Could not load the credentials from the newly saved files!");
-                                throw new RuntimeException(e);
+                        try {
+                            if (InterNodeCrypto.checkCreds(cand_CA_cert, cand_MY_cert, cand_MY_key)) {
+                                Log.d("CREDS SAVE", "The credentials check out! Now saving the files!");
+                                InterNodeCrypto.SaveCredentials(keyFile, certFile, CAcertFile);
+                                Log.d("CREDS SAVE", "The NEW credentials must have been saved in the InterNodeCrypto class!");
+                                try {
+                                    InterNodeCrypto.LoadCredentials();
+                                    Log.d("CREDS LOADING", "Credentials now successfully loaded from the new files!");
+                                    Toast.makeText(getContext(), "Success! The selected credentials will be used from now on!", Toast.LENGTH_LONG).show();
+                                } catch (IOException e) {
+                                    Log.d("CREDS LOADING", "Could not load the credentials from the newly saved files!");
+                                    throw new RuntimeException(e);
+                                }
+                            } else {
+                                Toast.makeText(getContext(), "The selected credentials are not valid with each other!", Toast.LENGTH_LONG).show();
                             }
                         }
-                        else{
-                            Toast.makeText(getContext(), "The selected credentials are not valid with each other!", Toast.LENGTH_LONG).show();
+                        catch (Exception e){
+                            e.printStackTrace();
+                            return;
                         }
 
                     }
