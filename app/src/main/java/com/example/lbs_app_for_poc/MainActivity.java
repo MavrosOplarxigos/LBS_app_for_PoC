@@ -6,6 +6,11 @@ import android.os.Bundle;
 
 import com.google.android.material.snackbar.Snackbar;
 
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContract;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -34,10 +39,16 @@ public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST_READ_EXTERNAL_STORAGE = 123;
     private static final int MY_PERMISSIONS_REQUEST_WRITE_EXTERNAL_STORAGE = 122;
     private static final int MY_PERMISSIONS_REQUEST_MANAGE_EXTERNAL_STORAGE = 121;
+    public static final Object lockForCredsCheck = new Object();
+    public static boolean flagForCredsCheck;
+    public static boolean hasManageAllFilesPermissionActivityLaunched;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        flagForCredsCheck = false;
+        hasManageAllFilesPermissionActivityLaunched = false;
 
         StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
         StrictMode.setThreadPolicy(policy);
@@ -71,9 +82,26 @@ public class MainActivity extends AppCompatActivity {
         //}
 
         if (!Environment.isExternalStorageManager()){
+
             Intent getpermission = new Intent();
             getpermission.setAction(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
-            startActivity(getpermission);
+            // getpermission.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+            ActivityResultLauncher<Intent> allFilesPermissionARL = registerForActivityResult(
+                    new ActivityResultContracts.StartActivityForResult(),
+                    new ActivityResultCallback<ActivityResult>() {
+                        @Override
+                        public void onActivityResult(ActivityResult result) {
+                            setFlag();
+                        }
+                    }
+            );
+
+            allFilesPermissionARL.launch(getpermission);
+
+            // Working: startActivity(getpermission);
+            // startActivityForResult()
+
         }
 
         // We communicate the Files directory to the crypto class so that the credentials can be loaded from their respective paths
@@ -108,6 +136,21 @@ public class MainActivity extends AppCompatActivity {
                 Log.d("FILESYSTEM ACCESS", "permission to MANAGE files DENIED from PackageManger check!");
             }
 
+        }
+    }
+
+    public void setFlag() {
+        synchronized (lockForCredsCheck) {
+            flagForCredsCheck = true;
+            lockForCredsCheck.notify(); // Notify any waiting threads that the flag has changed
+        }
+    }
+
+    public static void waitForCredsFlag() throws InterruptedException {
+        synchronized (lockForCredsCheck) {
+            while (!flagForCredsCheck) {
+                lockForCredsCheck.wait(); // Wait until the flag becomes true
+            }
         }
     }
 

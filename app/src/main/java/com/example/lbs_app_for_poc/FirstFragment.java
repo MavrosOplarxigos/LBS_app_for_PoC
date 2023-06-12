@@ -2,6 +2,7 @@ package com.example.lbs_app_for_poc;
 
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -17,7 +18,7 @@ import com.example.lbs_app_for_poc.databinding.FragmentFirstBinding;
 public class FirstFragment extends Fragment {
 
     private FragmentFirstBinding binding;
-    private static boolean CredsNoticeGiven = false; // We will give at most one time notice to the user when there are no certificates
+    private static boolean CredsNoticeGiven = false;
 
     @Override
     public View onCreateView(
@@ -33,12 +34,13 @@ public class FirstFragment extends Fragment {
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
+        CredsNoticeGiven = false;
+
         Button search_initiator_button = view.findViewById(R.id.button_first);
         search_initiator_button.setText("Search Initiator Node");
         binding.buttonFirst.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                CredentialsNoticeCheck();
                 NavHostFragment.findNavController(FirstFragment.this)
                         .navigate(R.id.action_FirstFragment_to_SecondFragment);
             }
@@ -50,7 +52,6 @@ public class FirstFragment extends Fragment {
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-                        CredentialsNoticeCheck();
                         NavHostFragment.findNavController(FirstFragment.this)
                                 .navigate(R.id.action_FirstFragment_to_intermediateNodeConfig);
                     }
@@ -63,7 +64,6 @@ public class FirstFragment extends Fragment {
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-                        CredentialsNoticeCheck();
                         //Bundle bundle = new Bundle();
                         //bundle.putString("caller_fragment","main");
                         //NavHostFragment.findNavController(FirstFragment.this)
@@ -92,24 +92,56 @@ public class FirstFragment extends Fragment {
 
         view.setBackgroundColor(Color.DKGRAY);
 
+        // check credentials and tell the user if it is necessary to configure them!
+        Thread credsCheckThread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+
+                try{
+                    MainActivity.waitForCredsFlag();
+                    CredentialsNoticeCheck();
+                }
+                catch (Exception e){
+                    e.printStackTrace();
+                }
+
+            }
+        });
+        credsCheckThread.start();
+
     }
 
     public void CredentialsNoticeCheck(){
-        // We should also check whether there are certificates or not loaded and report it to the user the first time the app is
-        try {
-            InterNodeCrypto.LoadCredentials();
-            if(InterNodeCrypto.checkMyCreds()) {
-                Toast.makeText(getContext(), "The credentials are loaded & ready!", Toast.LENGTH_SHORT).show();
+        if (!FirstFragment.CredsNoticeGiven) {
+            Log.d("CREDS NOTICE CHECK","startedcredentialnoticecheck");
+            // We should also check whether there are certificates or not loaded and report it to the user the first time the app is
+            try {
+                InterNodeCrypto.LoadCredentials();
+                if (InterNodeCrypto.checkMyCreds()) {
+                    Log.d("Initial credentials check!", "The credentials are loaded & ready!");
+                } else {
+                    getActivity().runOnUiThread(
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(getContext(), "Credentials Invalid! Configure them!", Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                    );
+                }
+            } catch (Exception e) {
+                // TODO: Give more verbose reason here why the credentials are not loaded successfully!
+                getActivity().runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(getContext(), "No credentials loaded! Consider configuring them!", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                );
             }
-            else{
-                Toast.makeText(getContext(), "The credentials are not loaded.\nConsider configuring the credentials first!", Toast.LENGTH_SHORT).show();
-            }
+            CredsNoticeGiven = true;
         }
-        catch (Exception e){
-            // TODO: Give more verbose reason here why the credentials are not loaded successfully!
-            Toast.makeText(getContext(), "No credentials loaded! Consider configuring them!", Toast.LENGTH_SHORT).show();
-        }
-        CredsNoticeGiven = true;
     }
 
     @Override

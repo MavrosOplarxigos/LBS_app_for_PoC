@@ -85,7 +85,7 @@ public class InterNodeCrypto {
 
     /*
     This function is called when the user selects the certificate files from the system.
-    TODO: Because of the copying we need to call this function within a Thread.
+    NOTE: Because of the copying operations we may need to call this function within a Thread. Since files are small though no problem was encountered so far.
     We should also add a timeout to the thread and based on that timeout or the thread exiting output something
     to inform of whether the credentials were saved/updated successfully or not.
     Then this function copies these files to a standard path and calls LoadCertificates to load them.
@@ -135,10 +135,7 @@ public class InterNodeCrypto {
     }
 
     /*
-    This function tries to load the certificates from standard file locations.
-    If those files do not exist an exception is thrown to indicate that.
-
-    This function should run when the app starts and whenever the user picks other credentials and clicks to save the new ones.
+    This function tries to load the certificates from standard file locations. If they don't exist then we throw an exception.
      */
     public static void LoadCredentials() throws FileNotFoundException, IOException {
 
