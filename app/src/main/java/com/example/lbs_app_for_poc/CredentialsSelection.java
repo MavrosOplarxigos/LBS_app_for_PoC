@@ -159,7 +159,7 @@ public class CredentialsSelection extends Fragment {
                                     Log.d("KEY FILE LOADING","ATTENTION: testing key file reading!");
                                     PrivateKey my_private_key = InterNodeCrypto.KeyFromFile(keyFile);
                                     Log.d("KEY FILE LOADING","ATTENTION: the private key file has algorithm " + my_private_key.getAlgorithm() );
-                                    MYkeydetailsTV.setText( "Selected KEY loaded!" );
+                                    MYkeydetailsTV.setText( "Selected" + my_private_key.getAlgorithm() + " key loaded! Key format = " + my_private_key.getFormat() );
                                     MYkeydetailsTV.setBackgroundColor(Color.GREEN);
                                 }
                                 catch (Exception e){
@@ -302,7 +302,7 @@ public class CredentialsSelection extends Fragment {
             }
             MYkeydetailsTV.setBackgroundColor(Color.GREEN);
             // TODO: Add details for key (maybe the name on the key)
-            MYkeydetailsTV.setText( "LOADED" );
+            MYkeydetailsTV.setText( "Loaded " + InterNodeCrypto.my_key.getAlgorithm() + " key!");
         }
 
         Button MYKeyButton = (Button) view.findViewById(R.id.my_key_button);

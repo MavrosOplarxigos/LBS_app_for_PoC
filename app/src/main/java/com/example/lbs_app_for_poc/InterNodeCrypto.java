@@ -196,10 +196,9 @@ public class InterNodeCrypto {
         // DONE: check if the certificate is signed by the CA
         result = result && CryptoChecks.isCertificateSignedBy(MY_certificate,CA_certificate);
         if(Objects.equals(MY_key.getAlgorithm(), "EC")){
-            // Elliptic curve key then we check if signing and verifying works
             result = result && CryptoChecks.isSigningAndVerifyingWorking(MY_certificate,MY_key);
         } else if (Objects.equals(MY_key.getAlgorithm(), "RSA")) {
-            // RSA: we then check encryptiong and decryption
+            result = result && CryptoChecks.isSigningAndVerifyingWorking(MY_certificate,MY_key);
             result = result && CryptoChecks.isEncryptAndDecryptWorking(MY_certificate,MY_key);
         }
         else{
