@@ -81,6 +81,10 @@ public class MainActivity extends AppCompatActivity {
                     MY_PERMISSIONS_REQUEST_MANAGE_EXTERNAL_STORAGE);
         //}
 
+        // We communicate the Files directory to the crypto class so that the credentials can be loaded from their respective paths
+        InterNodeCrypto.absolute_path = getFilesDir();
+        Log.d("MAIN_ACTIVITY_INIT","The file directory is "+InterNodeCrypto.absolute_path);
+
         if (!Environment.isExternalStorageManager()){
 
             Intent getpermission = new Intent();
@@ -102,11 +106,10 @@ public class MainActivity extends AppCompatActivity {
             // Working: startActivity(getpermission);
             // startActivityForResult()
 
+        }else{
+            Log.d("INITIAL_CREDENTIAL_CHECK","We already have the environment external storage manager flag so we set the flag here!");
+            setFlag(); // The credential check should be carried out immediately this way
         }
-
-        // We communicate the Files directory to the crypto class so that the credentials can be loaded from their respective paths
-        InterNodeCrypto.absolute_path = getFilesDir();
-        Log.d("MAIN_ACTIVITY_INIT","The file directory is "+InterNodeCrypto.absolute_path);
 
     }
 
@@ -147,10 +150,13 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public static void waitForCredsFlag() throws InterruptedException {
+        Log.d("INITIAL_CREDENTIAL_CHECK","Entered waitForCredsFlag.");
         synchronized (lockForCredsCheck) {
+            Log.d("INITIAL_CREDENTIAL_CHECK","Synchonized for lockForCredsCheck in waitForCredsFlag.");
             while (!flagForCredsCheck) {
                 lockForCredsCheck.wait(); // Wait until the flag becomes true
             }
+            Log.d("INITIAL_CREDENTIAL_CHECK","WaitForCredsFlag waiting loop is done!");
         }
     }
 

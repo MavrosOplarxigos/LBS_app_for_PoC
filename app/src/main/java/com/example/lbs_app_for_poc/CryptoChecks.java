@@ -109,6 +109,22 @@ public class CryptoChecks {
 
     }
 
+    public  static  boolean isSignedByCert(byte [] original, byte [] signed, X509Certificate cert) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, SignatureException {
+        Signature dec_signature = getSignatureInstanceByAlgorithm(cert.getPublicKey().getAlgorithm());
+        if (dec_signature==null){ return false; }
+        dec_signature.initVerify(cert.getPublicKey());
+        dec_signature.update(original);
+        return dec_signature.verify(signed);
+    }
+
+    public static boolean isSignedByCert(String original, String signed, X509Certificate cert) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, SignatureException {
+        Signature dec_signature = getSignatureInstanceByAlgorithm(cert.getPublicKey().getAlgorithm());
+        if (dec_signature==null){ return false; }
+        dec_signature.initVerify(cert.getPublicKey());
+        dec_signature.update(original.getBytes());
+        return dec_signature.verify(signed.getBytes());
+    }
+
     public static boolean isSigningAndVerifyingWorking(X509Certificate certificate, java.security.PrivateKey privateKey) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeySpecException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException, InvalidKeyException, SignatureException {
 
         // retrieving the public key

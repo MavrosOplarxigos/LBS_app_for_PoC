@@ -3,6 +3,7 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -12,6 +13,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Signature;
 import java.security.SignatureException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
@@ -55,6 +57,7 @@ public class InterNodeCrypto {
                                                   // TODO: Ideally implement with both X509 for the case of standard compliance and future development AND
                                                   //  with a smaller version of a certificate with less data to communicate between nodes when communicating
     public static X509Certificate CA_cert = null;
+    public static X509Certificate peer_cert = null;
 
     private static void copyFile(File source, File destFile){
 
@@ -112,6 +115,23 @@ public class InterNodeCrypto {
             throw new RuntimeException(e);
         }
 
+    }
+
+    public static void save_peer_cert(byte [] s) throws CertificateException {
+        CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
+        peer_cert = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(s));
+        return;
+    }
+
+    public static X509Certificate CertFromByteArray(byte [] s) throws CertificateException {
+        CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
+        return (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(s));
+    }
+
+    public static X509Certificate CertFromString(String s) throws CertificateException {
+        CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
+        byte [] certBytes = s.getBytes();
+        return (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(certBytes));
     }
 
     public static X509Certificate CertFromFile(File candidate_cert_file) throws FileNotFoundException, IOException{
@@ -204,6 +224,23 @@ public class InterNodeCrypto {
         return result;
     }
 
+    public static byte [] signPrivateKeyByteArray(byte [] input) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, SignatureException {
+
+        if(my_cert == null){
+            Log.d("Cert Signing","My certificate is null how am I supposed to sign data???");
+        }
+
+        Signature signature = CryptoChecks.getSignatureInstanceByAlgorithm(my_key.getAlgorithm());
+        if(signature == null){
+            Log.d("Cert signing","The signatuere I receive is null!");
+        }
+
+        signature.initSign(my_key);
+        signature.update(input);
+        return signature.sign();
+
+    }
+
     public static String getCertDetails(@NonNull File certificate) throws FileNotFoundException {
         X509Certificate temp_cert = null;
         try{
@@ -244,7 +281,7 @@ public class InterNodeCrypto {
         }
         else{
             Log.d("CRED DETAILS","Successfully retrieved Subject DN");
-            return "Subject: " + certificate.getSubjectDN().toString() + '\n';
+            return "Subject: " + certificate.getSubjectDN().toString() + '\n' + "Algorithm: " + certificate.getPublicKey().getAlgorithm();
         }
     }
 

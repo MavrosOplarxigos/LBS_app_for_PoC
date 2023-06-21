@@ -97,6 +97,7 @@ public class FirstFragment extends Fragment {
             @Override
             public void run() {
 
+                Log.d("INITIAL_CREDENTIAL_CHECK","entered thread!");
                 try{
                     MainActivity.waitForCredsFlag();
                     CredentialsNoticeCheck();
@@ -119,6 +120,14 @@ public class FirstFragment extends Fragment {
                 InterNodeCrypto.LoadCredentials();
                 if (InterNodeCrypto.checkMyCreds()) {
                     Log.d("Initial credentials check!", "The credentials are loaded & ready!");
+                    getActivity().runOnUiThread(
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    Toast.makeText(getContext(), "Credentials Ready!", Toast.LENGTH_SHORT).show();
+                                }
+                            }
+                    );
                 } else {
                     getActivity().runOnUiThread(
                             new Runnable() {

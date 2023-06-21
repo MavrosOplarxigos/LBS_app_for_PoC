@@ -19,6 +19,7 @@ import android.widget.Toast;
 
 import org.w3c.dom.Text;
 
+import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -28,9 +29,18 @@ import java.net.InetSocketAddress;
 import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
 import java.security.InvalidParameterException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.SecureRandom;
+import java.security.SignatureException;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.CertificateException;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Pattern;
 
 public class ConnectivityConfiguration extends Fragment {
 
@@ -41,6 +51,7 @@ public class ConnectivityConfiguration extends Fragment {
     public static int my_port = -1;
     public static int peer_port = -1;
     public static Socket my_client_socket = null;
+    public static TextView connectivity_status_TV;
 
     public ConnectivityConfiguration() {
         // Required empty public constructor
@@ -127,7 +138,7 @@ public class ConnectivityConfiguration extends Fragment {
         peer_port_TV.setText(Integer.toString(peer_port));
 
         // Check if connectivity is established
-        TextView connectivity_status_TV = (TextView) view.findViewById(R.id.connectivity_status);
+        connectivity_status_TV = (TextView) view.findViewById(R.id.connectivity_status);
         if( (my_client_socket == null) || (!my_client_socket.isConnected()) ){
             // This will change if the user clicks the save & connect button
             connectivity_status_TV.setText("No connection!");
@@ -186,24 +197,186 @@ public class ConnectivityConfiguration extends Fragment {
 
                         // Here we consider the server is already ON
                         try {
-                            my_client_socket = new Socket(my_peer_ip_address,my_port);
-                            connectivity_status_TV.setText("Connected");
-                            connectivity_status_TV.setBackgroundColor(Color.GREEN);
 
-                            // sending the first message of the connection
+                            // COMMUNICATION PROTOCOL START
+
+                            my_client_socket = new Socket(my_peer_ip_address,my_port);
+
                             DataInputStream inputStream = new DataInputStream(my_client_socket.getInputStream());
                             DataOutputStream outputStream = new DataOutputStream(my_client_socket.getOutputStream());
 
-                            String my_message = "Hello from client!";
-                            outputStream.writeUTF(my_message);
+                            Log.d("TCP CLIENT","Input/Output strreams on Client socket are ready!");
 
-                            String server_response = inputStream.readUTF();
-                            Log.d("NET CONFIG","Message from server: "+server_response);
+                            // 1) HANDSHAKE STEP 1: SEND CLIENT CREDS
+                            // OK so now the client must sent his credentials to the server
+                            // Server expects the following format
+                            // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
 
-                            // If we received the message now we can communicate with the server
+                            // HELLO
+                            byte[] helloField = "HELLO".getBytes();
+                            // CERTIFICATE
+                            byte[] certificateFieldClientHello = InterNodeCrypto.my_cert.getEncoded();
+                            byte[] certificateFieldClientHelloLength = ("" + certificateFieldClientHello.length).toString().getBytes();
+                            SecureRandom secureRandom;
+                            byte [] nonceFieldClientHello;
+                            byte [] signedNonceFieldClientHello;
+                            // NONCE
+                            secureRandom = new SecureRandom();
+                            nonceFieldClientHello = new byte[20];
+                            secureRandom.nextBytes(nonceFieldClientHello);
+                            // SINGED NONCE
+                            signedNonceFieldClientHello = InterNodeCrypto.signPrivateKeyByteArray(nonceFieldClientHello);
+
+                            ByteArrayOutputStream baosClientHello = new ByteArrayOutputStream();
+                            baosClientHello.write(helloField);
+                            baosClientHello.write((byte)(TCPServerThread.transmission_del));
+                            baosClientHello.write(certificateFieldClientHelloLength);
+                            baosClientHello.write((byte)(TCPServerThread.transmission_del));
+                            // the certificate filed might contain | already so we just save the size of it and that's it
+                            baosClientHello.write(certificateFieldClientHello);
+                            baosClientHello.write((byte)(TCPServerThread.transmission_del));
+                            // the nonce field is always 20 bytes
+                            baosClientHello.write(nonceFieldClientHello);
+                            baosClientHello.write((byte)(TCPServerThread.transmission_del));
+                            baosClientHello.write(signedNonceFieldClientHello);
+                            // Here maybe add AES key exchange as well?
+
+                            byte [] ClientHello = baosClientHello.toByteArray();
+                            String ClientHelloDebugString = new String(ClientHello,StandardCharsets.UTF_8);
+                            Log.d("ClientHelloDebugString",ClientHelloDebugString);
+                            outputStream.write(ClientHello);
+
+                            Log.d("TCP CLIENT","Sent Client Hello!");
+
+                            // 2) HANDSHAKE STEP 2: RECEIVE SERVER CREDENTIALS
+                            // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+
+                            ByteArrayOutputStream baosServerHello = new ByteArrayOutputStream();
+                            byte[] buffer = new byte[1000];
+                            int bytesRead;
+                            int total_bytes = 0;
+                            while( (bytesRead = inputStream.read(buffer)) != -1 ){
+                                baosServerHello.write(buffer,0,bytesRead);
+                                total_bytes += bytesRead;
+                                if(bytesRead < buffer.length){
+                                    break; // The buffer is not filled up that means we have reached the EOF
+                                }
+                                if(total_bytes > TCPServerThread.max_transmission_cutoff){
+                                    break;
+                                }
+                            }
+                            Log.d("TCP CLIENT","Server Hello Received");
+                            byte[] bytesServerHello = baosServerHello.toByteArray();
+
+                            // SEPARATING THE FIELDS
+                            byte [][] fieldsServerHello = new byte[4][];
+                            int ci = 0; // current index on bytesServerHello
+                            int tempci = ci;
+
+                            // HELLO
+                            ByteArrayOutputStream baosServerHelloHello = new ByteArrayOutputStream();
+                            for(int i=ci;(char)( bytesServerHello[i] ) != TCPServerThread.transmission_del;i++){
+                                baosServerHelloHello.write( (byte) bytesServerHello[i] );
+                                ci=i;
+                            }
+                            fieldsServerHello[0] = baosServerHelloHello.toByteArray();
+
+                            ci++; // Now must be on delimiter
+                            if( (char)( bytesServerHello[ci] ) != TCPServerThread.transmission_del ){
+                                Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the HELLO bytes. Found " + bytesServerHello[ci]);
+                                protocol_failure_exit();
+                                return;
+                            }
+                            ci++;
+
+                            // SERVER CERTIFICATE LENGTH
+                            String certificateServerHelloLength = "";
+                            for(int i=ci;(char)( bytesServerHello[i] ) != TCPServerThread.transmission_del;i++){
+                                certificateServerHelloLength += (char) bytesServerHello[i];
+                                ci = i;
+                            }
+                            int certificateServerHelloLengthInt = Integer.parseInt(certificateServerHelloLength);
+
+                            ci++; // Now must be on delimiter
+                            if( (char)(bytesServerHello[ci]) != TCPServerThread.transmission_del ){
+                                Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the Server CERT LENGTH bytes. Found " + bytesServerHello[ci]);
+                                protocol_failure_exit();
+                                return;
+                            }
+                            ci++;
+
+                            // SERVER CERTIFICATE BYTES
+                            tempci = ci;
+                            ByteArrayOutputStream baosServerHelloCertificate = new ByteArrayOutputStream();
+                            for(int i=ci;i<ci+certificateServerHelloLengthInt;i++){
+                                baosServerHelloCertificate.write((byte)bytesServerHello[i]);
+                                tempci = i;
+                            }
+                            fieldsServerHello[1] = baosServerHelloCertificate.toByteArray();
+                            ci = tempci;
+
+                            ci++; // Now must be on delimiter
+                            if(bytesServerHello[ci] != TCPServerThread.transmission_del){
+                                Log.d("TCP client","Expected " + TCPServerThread.transmission_del + " after the server CERTIFICATE bytes. Found " + bytesServerHello[ci]);
+                                protocol_failure_exit();
+                                return;
+                            }
+                            ci++;
+
+                            // NONCE
+                            tempci = ci;
+                            ByteArrayOutputStream baosServerHelloNonce = new ByteArrayOutputStream();
+                            for(int i=ci;i<ci+20;i++){
+                                baosServerHelloNonce.write((byte)(bytesServerHello[i]));
+                                tempci=i;
+                            }
+                            fieldsServerHello[2] = baosServerHelloNonce.toByteArray();
+                            ci = tempci;
+
+                            ci++; // Now must be on delimiter
+                            if( (char)( bytesServerHello[ci] ) != TCPServerThread.transmission_del){
+                                Log.d("TCP client","Expected " + TCPServerThread.transmission_del + " after the NONCE bytes. Found " + bytesServerHello[ci]);
+                                protocol_failure_exit();
+                                return;
+                            }
+                            ci++;
+
+                            // SIGNED NONCE UNTIL THE END NOW
+                            ByteArrayOutputStream baosServerHelloSignedNonce = new ByteArrayOutputStream();
+                            for(int i=ci;i<bytesServerHello.length;i++){
+                                baosServerHelloSignedNonce.write((byte)(bytesServerHello[i]));
+                            }
+                            fieldsServerHello[3] = baosServerHelloSignedNonce.toByteArray();
+
+                            if(!checkFieldsHelloServer(fieldsServerHello)){
+                                Log.d("TCP CLIENT","The received fields are incorrect! Closing connection!");
+                                protocol_failure_exit();
+                                return;
+                            }
+
+                            Log.d("TCP CLIENT","The received fields are CORRECT!");
+
+                            connectivity_status_TV.setText("Connected!");
+                            connectivity_status_TV.setBackgroundColor(Color.GREEN);
+
+                            // now we will use the socket for communication from now on
+                            InterNodeCrypto.save_peer_cert(fieldsServerHello[1]);
+                            Log.d("TCP CLIENT","SUCCESS THE PEER CERTIFICATE IS NOW READY TO USE!");
 
                         } catch (IOException e) {
                             Log.d("NET CONFIG","Could not create/connect the socket!");
+                            throw new RuntimeException(e);
+                        } catch (CertificateEncodingException e) {
+                            throw new RuntimeException(e);
+                        } catch (NoSuchAlgorithmException e) {
+                            throw new RuntimeException(e);
+                        } catch (SignatureException e) {
+                            throw new RuntimeException(e);
+                        } catch (NoSuchProviderException e) {
+                            throw new RuntimeException(e);
+                        } catch (InvalidKeyException e) {
+                            throw new RuntimeException(e);
+                        } catch (CertificateException e) {
                             throw new RuntimeException(e);
                         }
 
@@ -214,17 +387,29 @@ public class ConnectivityConfiguration extends Fragment {
         // that way we don't need to
         // update the user on the status of the connectivity with the connectivity status text view
 
-        // TODO: Check here is we have asked for a new peer from the coordinator then we should try to establish connectivity as a client.
+        // TODO: Check here if we have asked for a new peer from the coordinator then we should try to establish connectivity as a client.
         // this  check should not be triggered by the clicking of the Save button but rather should be done automatically initially
         // After the first time we should only ask for a new peer from the coordinator if and only if the connectivity is lost
         // this request should be done when the user makes a new search for example
 
+    }
 
-
+    public static void protocol_failure_exit() throws IOException {
+        my_client_socket.close();
+        connectivity_status_TV.setText("Incorrect fields received from Server");
+        connectivity_status_TV.setBackgroundColor(Color.RED);
+    }
+    public boolean checkFieldsHelloServer(byte [][] arr) {
+        // For now client and server use the same fields in the hello messages
+        // So we can use the same function to check that the fields received are correct
+        return TCPServerThread.checkFieldsHello(arr,"Client");
     }
 
     byte [] str_to_ip_array(String input) throws InvalidParameterException {
         Log.d("STRTOIP",""+input);
+        input = input.replace(" ","");
+        input = input.replace("\n","");
+        Log.d("STRTOIP with white-space replacement",""+input);
         byte [] peer_addr_array = new byte[4];
         String [] input_arr = input.split("\\.");
         if(input_arr.length != 4){
