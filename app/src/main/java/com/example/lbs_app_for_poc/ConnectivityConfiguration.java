@@ -48,10 +48,12 @@ public class ConnectivityConfiguration extends Fragment {
     // Variables should be static
     public static InetAddress my_ip_address = null;
     public static InetAddress my_peer_ip_address = null;
-    public static int my_port = -1;
+    // public static int my_port = -1;
     public static int peer_port = -1;
     public static Socket my_client_socket = null;
     public static TextView connectivity_status_TV;
+    public static DataInputStream inputStream = null;
+    public static DataOutputStream outputStream = null;
 
     public ConnectivityConfiguration() {
         // Required empty public constructor
@@ -123,11 +125,11 @@ public class ConnectivityConfiguration extends Fragment {
         // if the edit text is changed then the changes will take place only when the save button is pressed
 
         // Displaying my own port
-        if(my_port == -1){
+        /*if(my_port == -1){
             my_port = 55777;
         }
         EditText my_port_TV = (EditText) view.findViewById(R.id.myTCPport_value);
-        my_port_TV.setText(Integer.toString(my_port));
+        my_port_TV.setText(Integer.toString(my_port));*/
 
         // Displaying peer's port
         if(peer_port == -1){
@@ -177,11 +179,11 @@ public class ConnectivityConfiguration extends Fragment {
                         // same with the ports we change them only when the save button is pressed
 
 
-                        Log.d("NET CONFIG",""+my_port_TV.getText());
-                        Log.d("VALUEOF",""+String.valueOf(my_port_TV.getText()));
-                        Log.d("VALUEOF",""+Integer.valueOf( String.valueOf(my_port_TV.getText()) ));
+                        // Log.d("NET CONFIG",""+my_port_TV.getText());
+                        // Log.d("VALUEOF",""+String.valueOf(my_port_TV.getText()));
+                        // Log.d("VALUEOF",""+Integer.valueOf( String.valueOf(my_port_TV.getText()) ));
 
-                        my_port = Integer.valueOf( String.valueOf(my_port_TV.getText()) );
+                        // my_port = Integer.valueOf( String.valueOf(my_port_TV.getText()) );
                         // peer port
                         peer_port = Integer.valueOf(String.valueOf(peer_port_TV.getText()));
 
@@ -196,14 +198,15 @@ public class ConnectivityConfiguration extends Fragment {
                         }
 
                         // Here we consider the server is already ON
+                        // TODO: Fix code so that we don't check for delimeter after the for loop exits when reading a field unless necessary
+                        // TODO: Add condition in for loops that we don't overstep the byte array we are reading from
                         try {
 
                             // COMMUNICATION PROTOCOL START
+                            my_client_socket = new Socket(my_peer_ip_address,peer_port);
 
-                            my_client_socket = new Socket(my_peer_ip_address,my_port);
-
-                            DataInputStream inputStream = new DataInputStream(my_client_socket.getInputStream());
-                            DataOutputStream outputStream = new DataOutputStream(my_client_socket.getOutputStream());
+                            inputStream = new DataInputStream(my_client_socket.getInputStream());
+                            outputStream = new DataOutputStream(my_client_socket.getOutputStream());
 
                             Log.d("TCP CLIENT","Input/Output strreams on Client socket are ready!");
 

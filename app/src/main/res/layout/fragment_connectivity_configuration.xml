@@ -70,40 +70,15 @@
         app:layout_constraintVertical_bias="0.30" />
 
     <TextView
-        android:id="@+id/myTCPport_title"
-        android:layout_width="229dp"
-        android:layout_height="35dp"
-        android:text="My TCP port"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.40" />
-
-    <EditText
-        android:id="@+id/myTCPport_value"
-        android:layout_width="229dp"
-        android:layout_height="45dp"
-        android:text="55555"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.45" />
-
-    <TextView
         android:id="@+id/peerTCPport_title"
         android:layout_width="229dp"
         android:layout_height="35dp"
         android:text="Peer's TCP port"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.55" />
+        app:layout_constraintVertical_bias="0.40" />
 
     <EditText
         android:id="@+id/peerTCPport_value"
@@ -115,7 +90,7 @@
         app:layout_constraintHorizontal_bias="0.5"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.60" />
+        app:layout_constraintVertical_bias="0.45" />
 
     <Button
         android:id="@+id/netconfig_save"

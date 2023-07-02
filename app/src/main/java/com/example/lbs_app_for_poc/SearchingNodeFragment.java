@@ -46,12 +46,22 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.SignatureException;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import javax.net.ssl.HttpsURLConnection;
 
 public class SearchingNodeFragment extends Fragment implements OnMapReadyCallback {
@@ -63,7 +73,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     private Button search_button;
     private EditText search_keyword_input;
     public GeoJsonLayer results_layer = null;
-    private MapSearchItem msi;
+    private MapSearchItem msi; // The fundamental object that defines the search as soon as the search button is pressed
 
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
@@ -243,6 +253,8 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         }
 
                         // OK so the map is already prepared so now we can carry out the search
+                        // TODO: Reduce the number of bytes that are send to the server by sending a string that only contains the fields needed
+                        // TODO: rather than the entire URL (modify MapSearchItem class)
                         String api_call_string = "";
                         try {
                             api_call_string = msi.apicall();
@@ -255,53 +267,287 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         }
 
                         // Now we need to instead of carrying out the request ourselves establish connectivity to the server and send msi as a byte array or string
+                        // 3) CLIENT MESSAGE: SENT MESSAGE TO THE SERVER (QUERY)
 
-                        // 1) HANDSHAKE STEP 1: SEND CLIENT CREDS TO SERVER
-                        // [8 bytes][ ? ECDSA CERT LENGHT AFTER ENCRYPTED WITH CA PRIV KEY ]
-                        // [CLIENT ID][ECDSA_ID_AND_PUBKEY_ENCRYPTED_WITH_CA_PRIVATE_KEY]
+                        // In this case we are sending a query so the format is the following:
+                        // [QUERY] | [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] | [API_CALL_SIGNED_BYTES]
 
-                        // 2) HANDSHAKE STEP 2: RECEIVE SERVER CREDS
-                        // [8 bytes][ ? ECDSA CERT LENGHT AFTER ENCRYPTED WITH CA PRIV KEY ]
-                        // [SERVER ID][ECDSA_ID_AND_SERVER_PUBKEY_ENC_WITH_CA_PRIVATE_KEY]
+                        byte [] queryBytesClientQuery = "QUERY".getBytes();
+                        byte [] APICallBytesClientQuery = api_call_string.getBytes();
 
-                        // VERIFY SERVER ID = ID IN THE CERTIFICATE
+                        byte [] APICallEncryptedBytesClientQuery;
+                        try {
+                            APICallEncryptedBytesClientQuery = InterNodeCrypto.encryptWithPeerKey(APICallBytesClientQuery);
+                        } catch (NoSuchPaddingException e) {
+                            throw new RuntimeException(e);
+                        } catch (NoSuchAlgorithmException e) {
+                            throw new RuntimeException(e);
+                        } catch (InvalidKeyException e) {
+                            throw new RuntimeException(e);
+                        } catch (IllegalBlockSizeException e) {
+                            throw new RuntimeException(e);
+                        } catch (BadPaddingException e) {
+                            throw new RuntimeException(e);
+                        }
 
-                        // 3) SERVICE STEP 1: SERIALIZE OR STRINGIFY msi (or make into a byte array)
-                        // 4) SERVICE STEP 2: ENCRYPT WITH PRIV KEY OF CLIENT AND THEN WITH PUB KEY OF SERVER
-                        // 5) SERVICE STEP 3: SEND THE STRING TO THE SERVER
+                        byte [] APICallBytesSignedClientQuery;
+                        try {
+                            APICallBytesSignedClientQuery = InterNodeCrypto.signPrivateKeyByteArray(APICallEncryptedBytesClientQuery);
+                        } catch (NoSuchAlgorithmException e) {
+                            throw new RuntimeException(e);
+                        } catch (NoSuchProviderException e) {
+                            throw new RuntimeException(e);
+                        } catch (InvalidKeyException e) {
+                            throw new RuntimeException(e);
+                        } catch (SignatureException e) {
+                            throw new RuntimeException(e);
+                        }
 
-                        // 6) SERVICE STEP 4: RECEIVE A STRING (or byte array from the server)
-                        // 7) SERVICE STEP 5: DECRYPT FIRST USING PRIV KEY OF CLIENT AND THEN PUBLIC KEY OF SERVER
+                        byte [] APICallEncryptedBytesClientQueryLength = ("" + APICallEncryptedBytesClientQuery.length).getBytes();
+                        // 256
+                        Log.d("TCP client","The size of the query bytes should be " + new String(APICallEncryptedBytesClientQueryLength,StandardCharsets.UTF_8) );
 
-                        // 8) SERVICE STEP 6: USE THE RESPONSE AND DISPLAY IT
+                        ByteArrayOutputStream baosClientQuery = new ByteArrayOutputStream();
+                        try {
+                            baosClientQuery.write(queryBytesClientQuery);
+                            baosClientQuery.write(TCPServerThread.transmission_del);
+                            baosClientQuery.write(APICallEncryptedBytesClientQueryLength);
+                            baosClientQuery.write(TCPServerThread.transmission_del);
+                            baosClientQuery.write(APICallEncryptedBytesClientQuery);
+                            baosClientQuery.write(TCPServerThread.transmission_del);
+                            baosClientQuery.write(APICallBytesSignedClientQuery);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
 
-                        // 9) ACKNOWLEDGEMENT STEP 1: HASH THE RECEIVED STRING AND SEND IT ENCRYPTED WITH CLIENT KEY AND THEN SERVER PUB KEY
+                        byte [] ClientQuery = baosClientQuery.toByteArray();
+                        // 523
+                        Log.d("TCP client","The size of the entire query message in bytes should be " + ClientQuery.length );
 
-                        /*
+                        try {
+                            ConnectivityConfiguration.outputStream.write(ClientQuery);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        Log.d("TCP CLIENT","The query has been sent to the Server!");
 
-                        // TODO: change this to send the api_call_url to the intermediate node instead steps are above
-                        // the intermediate node should run the following code after receiving the request
-                        JSONObject answer = execute_api_call(api_call_string);
+                        // ---------------------------- POINT OF DISASTER -------------------------------------
 
-                        if(answer == null){
-                            Log.d("API EXEC RESULT","The JSON file is null!\n");
-                            Toast.makeText(getContext(), "No response from LBS server!", Toast.LENGTH_SHORT).show();
+                        // 4.1) SERVER RESPONSE DECLARATION: RECEIVE THE RESPONSE SIZE IN BYTES
+                        // [RESPONSE] | [RESPONSE SIZE IN BYTES]
+
+                        ByteArrayOutputStream baosServerResponseDeclaration;
+                        try {
+                            baosServerResponseDeclaration = new ByteArrayOutputStream();
+                            byte[] bufferServerResponseDeclaration = new byte[1000];
+                            int bytesReadServerResponseDeclaration;
+                            int total_bytesServerResponseDeclaration = 0;
+                            while( (bytesReadServerResponseDeclaration = ConnectivityConfiguration.inputStream.read(bufferServerResponseDeclaration)) != -1 ) {
+                                Log.d("TCP CLIENT","Now read " + bytesReadServerResponseDeclaration + " bytes!");
+                                baosServerResponseDeclaration.write(bufferServerResponseDeclaration, 0, bytesReadServerResponseDeclaration);
+                                total_bytesServerResponseDeclaration += bytesReadServerResponseDeclaration;
+                                if (bytesReadServerResponseDeclaration < bufferServerResponseDeclaration.length) {
+                                    break; // The buffer is not filled up that means we have reached the EOF
+                                }
+                                if (total_bytesServerResponseDeclaration > TCPServerThread.max_transmission_cutoff) {
+                                    Log.d("TCP CLIENT","The maximum transmission cutoff is reached!");
+                                    break;
+                                }
+                            }
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        byte [] bytesServerResponseDeclartion = baosServerResponseDeclaration.toByteArray();
+
+                        Log.d("TCP CLIENT","Received Server Response Declaration!");
+
+                        // SEPARATING THE FIELDS OF SERVER RESPONSE DECLARATION
+
+                        // First let's read the prefix RESPONSE
+                        int ci = 0; // current index bytesServerResponseDeclaration
+                        int tempci = ci;
+
+                        // [RESPONSE]
+                        ByteArrayOutputStream baosServerResponseDeclarationResponse = new ByteArrayOutputStream();
+                        for(int i=ci;(i < bytesServerResponseDeclartion.length) && ((char)( bytesServerResponseDeclartion[i] ) != TCPServerThread.transmission_del);i++){
+                            baosServerResponseDeclarationResponse.write( (byte) bytesServerResponseDeclartion[i] );
+                            ci=i;
+                        }
+                        // check that the message has the prefix RESPONSE
+                        if( !( "RESPONSE".equals( new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) ) ) ){
+                            Log.d("TCP CLIENT","ERROR: The prefix of the received message is " + new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) );
+                            Toast.makeText(null, "Invalid message. Prefix not equal to RESPONSE!", Toast.LENGTH_SHORT).show();
                             return;
                         }
-                        else {
-                            Log.d("API EXEC RESULT", "The JSON file was created! \n" + answer.toString());
+                        Log.d("TCP CLIENT","SUCCESS: the prefix of the received message from the intermediate node is " + new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) );
+                        ci++; // Now must be on delimiter
+                        if( (char)( bytesServerResponseDeclartion[ci] ) != TCPServerThread.transmission_del ){
+                            Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the RESPONSE bytes. Found " + bytesServerResponseDeclartion[ci]);
+                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        ci++;
+
+                        // Then let's read how many bytes the response will be
+                        // [RESPONSE SIZE IN BYTES]
+                        String ResponseSizeInBytesString = "";
+                        for(int i=ci;(i< bytesServerResponseDeclartion.length) && ((char)( bytesServerResponseDeclartion[i] ) != TCPServerThread.transmission_del); i++){
+                            ResponseSizeInBytesString += (char)( bytesServerResponseDeclartion[i] );
+                            ci = i;
+                        }
+                        Log.d("TCP CLIENT","The ResponseSizeInBytesString is " + ResponseSizeInBytesString);
+                        int ResponseSizeInBytes = Integer.parseInt(ResponseSizeInBytesString);
+
+                        // 4.2) CLIENT DECLARATION ACCEPT
+                        try {
+                            ConnectivityConfiguration.outputStream.write("ACK".getBytes());
+                            Log.d("TCP CLIENT","ACKNOWLEDGMENT OF SERVER RESPONSE DECLARATION SENT SUCCESSFULLY");
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
                         }
 
-                        // In case no results were found we report it to the user and return
-                        if( answer.toString().contains("\"status\":\"ZERO_RESULTS\"") ) {
-                            Toast.makeText(getContext(), "No results for given keyword!", Toast.LENGTH_SHORT).show();
+                        // 4.3) SERVER RESPONSE: RECEIVE THE ACTUAL RESPONSE BYTES FROM THE SERVER
+                        // [JSONObjectAnswerByteArraySize] | [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
+                        // NOW BASED ON KNOWING HOW MUCH BYTES WE SHOULD EXPECT WE CAN READ THE ACTUAL RESPONSE
+
+                        ByteArrayOutputStream baosServerResponse;
+                        try {
+
+                            baosServerResponse = new ByteArrayOutputStream();
+                            byte[] bufferServerResponse = new byte[1000]; // we will attempt using a bigger buffer here
+                            int bytesReadServerResponse;
+                            int total_bytesServerResponse = 0;
+                            int times_waited = 0;
+                            while( total_bytesServerResponse < ResponseSizeInBytes ) {
+                                bytesReadServerResponse = ConnectivityConfiguration.inputStream.read(bufferServerResponse);
+                                total_bytesServerResponse += bytesReadServerResponse;
+                                if( (bytesReadServerResponse == -1) && (total_bytesServerResponse < ResponseSizeInBytes) ){
+                                    if(times_waited == 0) {
+                                        Log.d("TCP CLIENT", "Waiting for bytes from intermediate node!");
+                                    }
+                                    if(times_waited == 100) {
+                                        Log.d("TCP CLIENT", "Waited more thatn 100 times for bytes to reach the client! " +
+                                                "So far we have read only " + total_bytesServerResponse + " bytes!");
+                                    }
+                                    times_waited++;
+                                    continue;
+                                }
+                                Log.d("TCP CLIENT","Now read " + bytesReadServerResponse + " bytes!");
+                                baosServerResponse.write(bufferServerResponse, 0, bytesReadServerResponse);
+                                if (bytesReadServerResponse < bufferServerResponse.length) {
+                                    Log.d("TCP CLIENT","A segment was read that had only " + bytesReadServerResponse + " bytes!" +
+                                            " So far " + total_bytesServerResponse + "have been read!");
+                                    if(total_bytesServerResponse < ResponseSizeInBytes){
+                                        Log.d("TCP CLIENT","We won't brake the loop because not all of the expected bytes were read!");
+                                        continue;
+                                    }
+                                    else {
+                                        Log.d("TCP CLIENT","Since it seems that we have read all the bytes we will break the loop!");
+                                        break; // The buffer is not filled up that means we have reached the EOF
+                                    }
+                                }
+                                if (total_bytesServerResponse > TCPServerThread.max_transmission_cutoff) {
+                                    Log.d("TCP CLIENT","ERROR: The maximum transmission cutoff is reached! We did not expect messages more than " + TCPServerThread.max_transmission_cutoff + " bytes!");
+                                    break;
+                                }
+                            }
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        byte [] bytesServerResponse = baosServerResponse.toByteArray();
+                        Log.d("TCP CLIENT","SUCCESS: Received ServerResponse. Size of byte array is " + bytesServerResponse.length);
+
+                        // SEPARATING THE FIELDS
+                        // [JSONObjectAnswerByteArraySize] | [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
+                        byte [][] fieldsServerResponse = new byte[2][]; // [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
+                        ci = 0; // current index bytesServerResponse
+                        tempci = ci;
+
+                        // JSONObjectAnswerByteArraySize
+                        String JSONObjectAnswerByteArraySizeString = "";
+                        for(int i=ci;(char)( bytesServerResponse[i] ) != TCPServerThread.transmission_del; i++){
+                            JSONObjectAnswerByteArraySizeString += (char)( bytesServerResponse[i] );
+                            ci = i;
+                        }
+                        Log.d("TCP CLIENT","The JSONObjectAnswerByteArraySizeString is " + JSONObjectAnswerByteArraySizeString);
+                        int JSONObjectAnswerByteArraySize = Integer.parseInt(JSONObjectAnswerByteArraySizeString);
+
+                        ci++; // Now must be on delimiter
+                        if( (char)(bytesServerResponse[ci]) != TCPServerThread.transmission_del ){
+                            Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the server response json object ansewr bytes array size. Found " + bytesServerResponse[ci]);
+                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        ci++;
+
+                        // JSONObjectAnswerByteArray
+                        tempci = ci;
+                        ByteArrayOutputStream baosServerResponseJSONObjectAnswerByteArray = new ByteArrayOutputStream();
+                        for(int i=ci;i<ci+JSONObjectAnswerByteArraySize;i++){
+                            baosServerResponseJSONObjectAnswerByteArray.write((byte)bytesServerResponse[i]);
+                            tempci = i;
+                        }
+                        fieldsServerResponse[0] = baosServerResponseJSONObjectAnswerByteArray.toByteArray();
+                        ci = tempci;
+
+                        ci++; // Now must be on delimiter
+                        if( (char)(bytesServerResponse[ci]) != TCPServerThread.transmission_del ){
+                            Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the server response json object ansewr bytes. Found " + bytesServerResponse[ci]);
+                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        ci++;
+
+                        // JSONObjectAnswerByteArraySigned
+                        ByteArrayOutputStream baosServerResponseJSONObjectAnswerByteArraySigned = new ByteArrayOutputStream();
+                        for(int i=ci;i< bytesServerResponse.length;i++){
+                            baosServerResponseJSONObjectAnswerByteArraySigned.write((byte)(bytesServerResponse[i]));
+                        }
+                        fieldsServerResponse[1] = baosServerResponseJSONObjectAnswerByteArraySigned.toByteArray();
+
+                        Log.d("TCP client","The response has been received by the intermediate node! Now performing checks!");
+
+                        // Check that the JSON array is indeed signed by the peer server
+                        try {
+                            if( !CryptoChecks.isSignedByCert(fieldsServerResponse[0],fieldsServerResponse[1],InterNodeCrypto.peer_cert) ){
+                                Log.d("TCP client","The received response signature is not correct!");
+                                Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
+                                return;
+                            }
+                        } catch (NoSuchAlgorithmException e) {
+                            throw new RuntimeException(e);
+                        } catch (NoSuchProviderException e) {
+                            throw new RuntimeException(e);
+                        } catch (InvalidKeyException e) {
+                            throw new RuntimeException(e);
+                        } catch (SignatureException e) {
+                            throw new RuntimeException(e);
+                        }
+
+                        Log.d("TCP client","SUCCESS: The received response's signature is correct!");
+
+                        // Now make the JSON byte array to JSONObject again
+                        String JSONObjectAnswer = new String(fieldsServerResponse[0],StandardCharsets.UTF_8);
+                        JSONObject answerJSON;
+                        try {
+                            answerJSON = new JSONObject(JSONObjectAnswer);
+                            Log.d("TCP client","SUCCESS: The response produced a JSON object successfully!");
+                        } catch (JSONException e) {
+                            Log.d("TCP client","ERROR: The response doesn't produce a JSON object as expected!");
+                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
+                            throw new RuntimeException(e);
+                        }
+
+                        if( answerJSON.toString().contains("\"status\":\"ZERO_RESULTS\"") ) {
+                            Toast.makeText(getContext(), "ERROR: No results for given keyword!", Toast.LENGTH_SHORT).show();
                             return;
                         }
 
-                        // After the transformation is carried out we should be left with a GeoJSON
-                        JSONObject answer_geojsoned = json_to_geojson( answer );
+                        Log.d("JSON PROCESSING","The transmission of data has finished! Now on to processing the JSON");
+                        JSONObject answer_geojsoned = json_to_geojson( answerJSON );
+                        Log.d("JSON PROCESSING","Modified answer from JSON to GEO_JSON format!");
                         apply_result_layer(answer_geojsoned);
-                        */
+                        Log.d("MAP UPDATE","The GeoJSON object has been added to the map layer for display!");
 
                     }
                 }
@@ -358,69 +604,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
         }
 
         mMapView.onSaveInstanceState(mapViewBundle);
-    }
-
-    // TODO: MOVE THIS FUNCTION TO A SEPARATE CLASS (LBS_DIRECT_INTERACTIONS) LET'S CALL IT
-    JSONObject execute_api_call(String call_string){
-
-        try {
-            JSONObject answer = null;
-
-            // Here the integrity of the answer when returned from the intermediate node
-            // can only be checked if the public key used every time by the LBS is the same
-            // and thus it can be known by both parties (search initiator node and intermediate node)
-            // In our case we have a new HTTPS connection every time and thus a different handshake takes place
-
-            URL api_call_url = new URL(call_string);
-            HttpsURLConnection connection = (HttpsURLConnection) api_call_url.openConnection();
-            connection.setRequestMethod("GET");
-
-            // Here we can print the certificate chain of the server
-            // TODO: Discover why when trying to just print the certificate chain the connection establishment fails
-            /*
-            String server_certificat_chain = "";
-            for(int i=0;i< connection.getServerCertificates().length; i++){
-                server_certificat_chain += "\n";
-                server_certificat_chain += connection.getServerCertificates()[i].toString();
-            }
-            Log.d("API CALL EXEC",server_certificat_chain);
-            */
-
-            // TODO: As the intermediate node see if I can extract the encrypted version of the answer and forward that to the search initiator
-            // so along with the my own keys it can verify the integrity of the answer.
-            // TODO: Ask Hongyu if here I could simply fabricate the action of the LBS signing the response it sends
-            // to the intermediate node and therefore the integrity of the answer could also be proven
-            // because with the HTTP connection and a BufferedReader it doesn't seem that I can returned the encrypted
-            // answer. Instead it seems that it is read in plaintext.
-
-            // from reasearch on the documentation we can't really request that the answer text we receive
-            // is encrypted https://developers.google.com/maps/documentation/places/web-service/search-nearby
-
-            int responseCode = connection.getResponseCode();
-            Log.d("API CALL EXEC","HTTPS Response Code Received = " + responseCode);
-
-            if(responseCode == HttpURLConnection.HTTP_OK ){
-                Log.d("API CALL EXEC","HTTPS Response is OK!");
-                BufferedReader bufferedReader = new BufferedReader( new InputStreamReader(connection.getInputStream()) );
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while( (line=bufferedReader.readLine()) != null){
-                    sb.append(line);
-                }
-                answer = new JSONObject(sb.toString());
-            }
-            else{
-                Log.d("API CALL EXEC ERROR","RESPONSE NOT OK FROM HTTP SERVER");
-            }
-
-            return answer;
-        }
-        catch (Exception e){
-            e.printStackTrace();
-            Log.d("API CALL EXEC","Could not retrieve JSONobject");
-            return null;
-        }
-
     }
 
     /*

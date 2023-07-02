@@ -2,6 +2,8 @@ package com.example.lbs_app_for_poc;
 
 import android.util.Log;
 
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -20,6 +22,10 @@ import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.regex.Pattern;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
+
 public class TCPServerThread extends Thread{
 
     public ServerSocket serverSocket;
@@ -37,6 +43,8 @@ public class TCPServerThread extends Thread{
 
         while(true){
 
+            // TODO: Fix code so that we don't check for delimeter after the for loop exits when reading a field unless necessary
+            // TODO: Add condition in for loops that we don't overstep the byte array we are reading from
             try {
 
                 // COMMUNICATION PROTOCOL START
@@ -45,6 +53,7 @@ public class TCPServerThread extends Thread{
                 Socket socket = serverSocket.accept();
                 DataInputStream inputStream = new DataInputStream(socket.getInputStream());
                 DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
+                Log.d("TCP server","Received connection from " + socket.getInetAddress().getHostAddress() + " from port " + socket.getPort() );
 
                 // 1) HANDSHAKE STEP 1: RECEIVE CLIENT CREDS
                 // OK so now the client must sent his credentials to us
@@ -193,36 +202,264 @@ public class TCPServerThread extends Thread{
                 InterNodeCrypto.save_peer_cert(fieldsClientHello[1]);
                 Log.d("TCP server","SUCCESS THE PEER CERTIFICATE IS NOW READY TO USE!");
 
-                // We are going to keep answering queries until the client says BYE
+                // We are going to keep answering QUERIES until the client says BYE
+                // TODO: Add more reponsiveness from server side on faulty queries from client
                 while(true) {
 
-                    // 3) SERVICE STEP 1: RECEIVE A MAP SEARCH ITEM AS A STRING ENCRYPTED WITH SERVERS PUBLIC KEY AND CLIENTS PRIVATE KEY FOR AUTHENTICATION AND NON-REPUDIATION
+                    // 3) CLIENT MESSAGE: RECEIVE A MESSAGE FROM CLIENT (QUERY,BYE)
+                    Log.d("TCP Server","Now waiting for a new query from the client!");
 
+                    ByteArrayOutputStream baosClientMessage = new ByteArrayOutputStream();
+                    byte [] bufferClientMessage = new byte[1000];
+                    int bytesReadClientMessage;
+                    int total_bytesClientMessage = 0;
+                    while( (bytesReadClientMessage = inputStream.read(bufferClientMessage)) != -1 ){
+                        baosClientMessage.write(bufferClientMessage,0,bytesReadClientMessage);
+                        total_bytesClientMessage += bytesReadClientMessage;
+                        if(bytesReadClientMessage < bufferClientMessage.length){
+                            break; // The buffer is not filled up that means we have reached the EOF
+                        }
+                        if(total_bytesClientMessage > max_transmission_cutoff){
+                            break;
+                        }
+                    }
+                    Log.d("TCP server","Client Message Received.");
+                    byte[] bytesClientMessage = baosClientMessage.toByteArray();
+                    Log.d("TCP Server","Client message size in bytes is " + bytesClientMessage.length );
 
-                    // 4) SERVICE STEP 2: DECRYPT THE STRING USING CLIENT'S PUBLIC KEY AND SERVER'S PRIVATE KEY (MAYBE FOR THIS ONE WE SHOULD USE BYTE ARRAYS INSTEAD OF STRINGS)
-                    // 5) SERVICE STEP 3: CONVERT FROM STRING TO JAVA OBJECT (MAP SEARCH ITEM)
+                    // CHECKING MESSAGE OPTION
+                    ci = 0;
+                    tempci = ci;
 
-                    // 6) SERVICE STEP 4: CARRY OUT THE apicall function on the MapSearchItem
+                    // READING TO SEE IF WE GET A BYE OR QUERY
+                    byte [] ClientMessageOption;
+                    ByteArrayOutputStream baosClientMessageOption = new ByteArrayOutputStream();
+                    for(int i=ci;(char)( bytesClientMessage[i] ) != transmission_del;i++){
+                        baosClientMessageOption.write( (byte) bytesClientMessage[i] );
+                        ci=i;
+                    }
+                    ClientMessageOption = baosClientMessageOption.toByteArray();
 
-                    // 7) SERVICE STEP 5: ENCRYPT THE RESULTING STRING WITH THE SERVER'S PRIVATE KEY FOR AUTH AND NONREP AND ENCRYPT IT WITH CLIENT'S PUBLIC KEY
+                    boolean isQuery = false;
+                    if( Arrays.equals(ClientMessageOption, "QUERY".getBytes()) ){
+                        Log.d("TCP server","The client has sent a QUERY!");
+                        isQuery = true;
+                    }
+                    else if( (!isQuery) && Arrays.equals(ClientMessageOption, "BYE".getBytes()) ){
+                        // TODO: Verify that the BYE received is indeed from the client by having one more field (i.e. the nonce)
+                        Log.d("TCP server","The client has sent a BYE thus terminating the connection!");
+                        break;
+                    }
+                    else{
+                        // TODO: Make server return a specific answer indicating to the client that the chosen option is not supported
+                        Log.d("TCP server","Client Message Option unrecognized.");
+                        continue;
+                    }
 
-                    // 8) SERVICE STEP 6: SEND THE ENCRYPTED STRING BACK TO THE CLIENT
+                    if(isQuery){
 
-                    // 9) ACKNOWLEDGEMENT STEP 1: RECEIVE A STRING WHICH IS ESSENTIALLY THE HAS OF THE RESPONSE STRING SIGNED WITH THE CLIENT'S KEY AND THEN ENCRYPTED WITH THE SERVER'S KEY
-                    // 10) ACKNOLEDGEMENT STEP 2: VERIFY THAT EVERYTHING IS RIGHT AND UPDATE THE SCROLL VIEW TO INDICATE THE STATUS OF THE REQUEST AS COMPLETED AND ACKNOWLEDGED
+                        // SERVICE STEP 1: RECEIVE AN API CALL AS A STRING
+                        // ENCRYPTED WITH SERVERS PUBLIC KEY
+                        // SIGNED WITH CLIENTS PRIVATE KEY FOR AUTHENTICATION AND NON-REPUDIATION
+                        // [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] | [API_CALL_SIGNED_BYTES]
 
+                        // Reading the delimiter byte after [QUERY]
+                        ci++;
+                        if( (char)(bytesClientMessage[ci]) != transmission_del ){
+                            Log.d("TCP server","ERROR: Expected " + TCPServerThread.transmission_del +" after the Client Message Option bytes. Found " + bytesClientMessage[ci]);
+                            return;
+                        }
+                        ci++;
+
+                        // SEPARATING THE FIELDS
+                        // [API_CALL_ENC_BYTES] | [API_CALL_SIGNED_BYTES]
+                        byte [][] fieldsClientQuery = new byte[2][];
+
+                        // API CALL ENCRYPTED BYTES LENGTH
+                        String APICallEncBytesLengthString = "";
+                        for(int i=ci;((char)(bytesClientMessage[i]) != transmission_del) && (i<total_bytesClientMessage);i++){
+                            APICallEncBytesLengthString += (char)(bytesClientMessage[i]);
+                            ci = i;
+                        }
+                        int APICallEncBytesLength = Integer.parseInt(APICallEncBytesLengthString);
+
+                        Log.d("TCP server","The encrypted bytes length expected is " + APICallEncBytesLength );
+
+                        // delimiter needs to be checked
+                        ci++;
+                        if( (char)(bytesClientMessage[ci]) != transmission_del ){
+                            Log.d("TCP server","ERROR: Expected " + TCPServerThread.transmission_del +" after the Client Query API Call Enc bytes. Found " + bytesClientMessage[ci]);
+                            return;
+                        }
+                        ci++;
+
+                        // API CALL ENCRYPTED BYTES
+                        ByteArrayOutputStream baosClientQueryAPICallEncBytes = new ByteArrayOutputStream();
+                        for(int i=ci;( i < ci+APICallEncBytesLength ) && ( i < total_bytesClientMessage );i++){
+                            baosClientQueryAPICallEncBytes.write(bytesClientMessage[i]);
+                            tempci = i;
+                        }
+                        ci = tempci;
+                        fieldsClientQuery[0] = baosClientQueryAPICallEncBytes.toByteArray();
+
+                        // delimiter needs to be checked
+                        ci++;
+                        if( (char)(bytesClientMessage[ci]) != transmission_del ){
+                            Log.d("TCP server","ERROR: Expected " + TCPServerThread.transmission_del +" after the Client Query API Call Enc bytes. Found " + bytesClientMessage[ci]);
+                            return;
+                        }
+                        ci++;
+
+                        // API CALL SIGNED BYTES
+                        ByteArrayOutputStream baosClientQueryAPICallSignedBytes = new ByteArrayOutputStream();
+                        for(int i=ci;i < total_bytesClientMessage;i++){
+                            baosClientQueryAPICallSignedBytes.write(bytesClientMessage[i]);
+                        }
+                        fieldsClientQuery[1] = baosClientQueryAPICallSignedBytes.toByteArray();
+
+                        // SERVICE STEP 2: a) CHECK THAT THE SIGNATURE CORRESPONDS TO THE ENCRYPTED API CALL BYTE ARRAY (USING CLIENT'S CERT)
+                        if( !CryptoChecks.isSignedByCert(fieldsClientQuery[0],fieldsClientQuery[1],InterNodeCrypto.peer_cert) ){
+                            Log.d("TCP server","ERROR: The received query signature is incorrect!");
+                            return;
+                        }
+                        else{
+                            Log.d("TCP server","SUCCESS: The received query signature is valid!");
+                        }
+
+                        // SERVICE STEP 2: b) DECRYPT THE ENCRYPTED API CALL (USING SERVERS PRIVATE KEY)
+                        byte [] APICallBytes = InterNodeCrypto.decryptWithOwnKey(fieldsClientQuery[0]);
+                        Log.d("TCP server","The received API call string after decryption is " + new String(APICallBytes,StandardCharsets.UTF_8) );
+
+                        // SERVICE STEP 3: Contact the LBS server to get the answer to the query as a JSONObject
+                        JSONObject answer = LBSServerInteractions.execute_api_call(new String(APICallBytes,StandardCharsets.UTF_8) );
+
+                        if(answer == null){
+                            Log.d("API EXEC RESULT","The JSONObject is null!\n");
+                            // Toast.makeText(getContext(), "No response from LBS server!", Toast.LENGTH_SHORT).show();
+                            // TODO: send [NO_ANSWER] [NONCE+1*NUM_OR_QUERIES_SO_FAR]
+                            return;
+                        }
+                        else {
+                            Log.d("API EXEC RESULT", "The JSONObject was created successfully! \n" + answer.toString());
+                        }
+
+                        // ---------------------------- POINT OF DISASTER -------------------------------------
+
+                        // SERVICE STEP 4: SERVER RESPONSE
+
+                        byte[] responseFieldServerResponse = "RESPONSE".getBytes();
+                        // Now we make the JSONObject into a byte array
+                        byte [] JSONObjectAnswerByteArray = answer.toString().getBytes(StandardCharsets.UTF_8);
+                        byte [] JSONObjectAnswerByteArraySigned = InterNodeCrypto.signPrivateKeyByteArray(JSONObjectAnswerByteArray);
+                        byte [] JSONObjectAnswerByteArraySize = ("" + JSONObjectAnswerByteArray.length).getBytes();
+
+                        // 4.1) SERVER RESPONSE DECLARATION: DECLARE TO THE CLIENT THE SIZE OF THE RESPONSE SO HE CAN ACTIVELY WAIT FOR ALL BYTES TO ARRIVE
+                        // RATHER THAN SKIPPING READING THEM AS SOON AS THE BUFFER GETS EMPTY DUE TO DATA TRASMISSION DELAYS (MOST PROBABLY).
+                        // [RESPONSE] | [RESPONSE SIZE IN BYTES]
+
+                        int ServerResponseSize = JSONObjectAnswerByteArraySize.length + 1 + JSONObjectAnswerByteArray.length + 1 + JSONObjectAnswerByteArraySigned.length;
+                        Log.d("TCP Server","The ServerResponseSize has been declared to be " + ServerResponseSize + " bytes!");
+                        byte [] ServerResponseSizeByteArray = ("" + ServerResponseSize).getBytes();
+
+                        ByteArrayOutputStream baosServerResponseDeclaration = new ByteArrayOutputStream();
+                        try {
+                            baosServerResponseDeclaration.write(responseFieldServerResponse);
+                            baosServerResponseDeclaration.write(transmission_del);
+                            baosServerResponseDeclaration.write(ServerResponseSizeByteArray);
+                        }
+                        catch (Exception e){
+                            Log.d("TCP Server","ERROR: Could not compose the byteArrayOutputStream for the ServerResponseDeclaration.");
+                            throw e;
+                        }
+
+                        byte [] ServerResponseDeclaration = baosServerResponseDeclaration.toByteArray();
+                        outputStream.write(ServerResponseDeclaration);
+
+                        // 4.2) CLIENT DECLARATION ACCEPT
+                        ByteArrayOutputStream baosClientDeclarationAccept = new ByteArrayOutputStream();
+                        byte [] bufferClientDeclarationAccept = new byte[1000];
+                        int bytesReadClientDeclarationAccept;
+                        int total_bytesClientDeclarationAccept = 0;
+                        while( (bytesReadClientDeclarationAccept = inputStream.read(bufferClientDeclarationAccept)) != -1 ){
+                            baosClientDeclarationAccept.write(bufferClientDeclarationAccept,0,bytesReadClientDeclarationAccept);
+                            total_bytesClientDeclarationAccept += bytesReadClientDeclarationAccept;
+                            if(bytesReadClientDeclarationAccept < bufferClientDeclarationAccept.length){
+                                break; // The buffer is not filled up that means we have reached the EOF
+                            }
+                            if(total_bytesClientDeclarationAccept > max_transmission_cutoff){
+                                break;
+                            }
+                        }
+                        Log.d("TCP server","Client Declaration Accept Received.");
+                        byte [] ClientDeclarationAccept = baosClientDeclarationAccept.toByteArray();
+
+                        if( !("ACK".equals( new String(ClientDeclarationAccept,StandardCharsets.UTF_8) )) ){
+                            Log.d("TCP server","ERROR: The client did not respond with ACK to our Server Response Declaration!");
+                            return;
+                        }
+
+                        // 4.3) SERVER RESPONSE: SEND THE ACTUAL RESPONSE BYTES TO THE CLIENT
+                        // [JSONObjectAnswerByteArraySize] | [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
+
+                        // 24238
+                        Log.d("TCP Server","The JSONObjectAnswerByteArray size is " + JSONObjectAnswerByteArray.length );
+                        Log.d("TCP Server","The JSONObjectAnswerByteArraySize is " + new String(JSONObjectAnswerByteArraySize,StandardCharsets.UTF_8) );
+                        Log.d("TCP Server","The JSONObjectAnswerByteArraySigned size is " + JSONObjectAnswerByteArraySigned.length );
+
+                        ByteArrayOutputStream baosServerRespone = new ByteArrayOutputStream();
+                        try {
+                            baosServerRespone.write(JSONObjectAnswerByteArraySize);
+                            baosServerRespone.write(transmission_del);
+                            baosServerRespone.write(JSONObjectAnswerByteArray);
+                            baosServerRespone.write(transmission_del);
+                            baosServerRespone.write(JSONObjectAnswerByteArraySigned);
+                        }
+                        catch (Exception e){
+                            Log.d("TCP Server","ERROR: Could not compose the byteArrayOutputStream for the ServerResponse.");
+                            throw e;
+                        }
+
+                        // 24510
+                        byte [] ServerResponse = baosServerRespone.toByteArray();
+                        Log.d("TCP Server","The entire ServerResponse size is " + ServerResponse.length );
+
+                        try{
+                            // here we will try to use a buffer when writing since the size of the ServerResponse can be big ~25K bytes
+                            // maybe there is data loss if we write all bytes at once so we are going to use a buffer
+                            int offset = 0;
+                            int bufferSize = 1000;
+                            while (offset < ServerResponse.length) {
+                                Log.d("TCP SERVER","Now writing for the offset " + offset);
+                                int length = Math.min(bufferSize, ServerResponse.length - offset);
+                                outputStream.write(ServerResponse, offset, length);
+                                offset += length;
+                            }
+                            outputStream.flush();
+                            // outputStream.write(ServerResponse);
+                        }catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+
+                        Log.d("TCP SERVER","The ServerResponse has been sent to the Client!");
+
+                        // NOW WE ARE GOING TO REPEAT THE LOOP TO RECEIVE ANY POSSIBLE FOLLOWING QUERY OR RECEIVE END COMMUNICATION OPTION (BYE)
+                        continue;
+
+                    }
+
+                    // Here we supposed that since the message received is neither BYE nor QUERY we just exit the loop
                     break;
 
                 }
 
+                /*
                 // read from client
                 String client_msg = inputStream.readUTF();
                 Log.d("TCP server","Message from client is "+client_msg);
 
                 // send response
                 String my_response = "Hello from server!";
-                outputStream.writeUTF(my_response);
-
+                outputStream.writeUTF(my_response);*/
 
                 socket.close();
                 Log.d("TCP server","Connection closed with " + socket.getInetAddress().getHostName() );
@@ -240,6 +477,12 @@ public class TCPServerThread extends Thread{
             } catch (InvalidKeyException e) {
                 throw new RuntimeException(e);
             } catch (CertificateException e) {
+                throw new RuntimeException(e);
+            } catch (NoSuchPaddingException e) {
+                throw new RuntimeException(e);
+            } catch (IllegalBlockSizeException e) {
+                throw new RuntimeException(e);
+            } catch (BadPaddingException e) {
                 throw new RuntimeException(e);
             }
 

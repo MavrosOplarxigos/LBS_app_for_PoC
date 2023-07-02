@@ -9,7 +9,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
+import java.security.Key;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
@@ -22,6 +24,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.Objects;
 
 import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
@@ -222,6 +225,20 @@ public class InterNodeCrypto {
             Log.d("CredentialCheck","No check implemented for " + MY_key.getAlgorithm() + "! We have to implement one!");
         }
         return result;
+    }
+
+    public static byte [] encryptWithPeerKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+        Cipher cipher = Cipher.getInstance("RSA");
+        cipher.init( Cipher.ENCRYPT_MODE , (Key) peer_cert.getPublicKey() );
+        byte[] enc_data = cipher.doFinal(input);
+        return enc_data;
+    }
+
+    public static byte [] decryptWithOwnKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+        Cipher cipher = Cipher.getInstance("RSA");
+        cipher.init( Cipher.DECRYPT_MODE , (Key) InterNodeCrypto.my_key );
+        byte[] dec_data = cipher.doFinal(input);
+        return dec_data;
     }
 
     public static byte [] signPrivateKeyByteArray(byte [] input) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, SignatureException {
