@@ -1,6 +1,10 @@
 package com.example.lbs_app_for_poc;
 
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
+import android.widget.TextView;
 
 import org.json.JSONObject;
 
@@ -12,6 +16,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SecureRandom;
@@ -29,12 +34,14 @@ import javax.crypto.NoSuchPaddingException;
 public class TCPServerThread extends Thread{
 
     public ServerSocket serverSocket;
+    private Handler uiHandler;
     public static final char transmission_del = '|';
     public static final int max_transmission_cutoff = 300000; // 301K bytes per message exchange
     // maybe a scroll view will be given as input to the constructor and we can report logs to that scroll view with text views
 
-    public TCPServerThread(ServerSocket s){
+    public TCPServerThread(ServerSocket s,Handler uiHandler){
         serverSocket = s;
+        this.uiHandler = uiHandler;
     }
 
     public void run(){
@@ -54,6 +61,15 @@ public class TCPServerThread extends Thread{
                 DataInputStream inputStream = new DataInputStream(socket.getInputStream());
                 DataOutputStream outputStream = new DataOutputStream(socket.getOutputStream());
                 Log.d("TCP server","Received connection from " + socket.getInetAddress().getHostAddress() + " from port " + socket.getPort() );
+
+                // updating the server log
+                Message connectionMessage = uiHandler.obtainMessage();
+                Bundle connectionBundle = new Bundle();
+                connectionBundle.putBoolean("isConnectionAccept",true);
+                connectionBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
+                connectionBundle.putInt("port",socket.getPort());
+                connectionMessage.setData(connectionBundle);
+                uiHandler.sendMessage(connectionMessage);
 
                 // 1) HANDSHAKE STEP 1: RECEIVE CLIENT CREDS
                 // OK so now the client must sent his credentials to us
@@ -234,7 +250,7 @@ public class TCPServerThread extends Thread{
                     // READING TO SEE IF WE GET A BYE OR QUERY
                     byte [] ClientMessageOption;
                     ByteArrayOutputStream baosClientMessageOption = new ByteArrayOutputStream();
-                    for(int i=ci;(char)( bytesClientMessage[i] ) != transmission_del;i++){
+                    for(int i=ci; (i<bytesClientMessage.length) && ((char)( bytesClientMessage[i] ) != transmission_del) ;i++){
                         baosClientMessageOption.write( (byte) bytesClientMessage[i] );
                         ci=i;
                     }
@@ -245,18 +261,29 @@ public class TCPServerThread extends Thread{
                         Log.d("TCP server","The client has sent a QUERY!");
                         isQuery = true;
                     }
-                    else if( (!isQuery) && Arrays.equals(ClientMessageOption, "BYE".getBytes()) ){
+                    else if( Arrays.equals(ClientMessageOption, "BYE".getBytes()) ){
                         // TODO: Verify that the BYE received is indeed from the client by having one more field (i.e. the nonce)
                         Log.d("TCP server","The client has sent a BYE thus terminating the connection!");
                         break;
                     }
+                    else if( ClientMessageOption.length == 0 ){
+                        Log.d("TCP server","The client terminated the connection suddenly without the BYE option.");
+                        break;
+                    }
                     else{
                         // TODO: Make server return a specific answer indicating to the client that the chosen option is not supported
-                        Log.d("TCP server","Client Message Option unrecognized.");
-                        continue;
+                        Log.d("TCP server","Client Message Option unrecognized. Option = " + new String(ClientMessageOption,StandardCharsets.UTF_8));
+                        break;
                     }
 
                     if(isQuery){
+
+                        // Logging that we received a Query from the peer
+                        Message QueryMessage = uiHandler.obtainMessage();
+                        Bundle QueryBundle = new Bundle();
+                        QueryBundle.putBoolean("isQuery",true);
+                        QueryBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
+                        QueryBundle.putInt("port",socket.getPort());
 
                         // SERVICE STEP 1: RECEIVE AN API CALL AS A STRING
                         // ENCRYPTED WITH SERVERS PUBLIC KEY
@@ -330,6 +357,10 @@ public class TCPServerThread extends Thread{
                         byte [] APICallBytes = InterNodeCrypto.decryptWithOwnKey(fieldsClientQuery[0]);
                         Log.d("TCP server","The received API call string after decryption is " + new String(APICallBytes,StandardCharsets.UTF_8) );
 
+                        // Update the logger with the query details and send the message to the logs handler
+                        QueryMessage.setData(QueryBundle);
+                        uiHandler.sendMessage(QueryMessage);
+
                         // SERVICE STEP 3: Contact the LBS server to get the answer to the query as a JSONObject
                         JSONObject answer = LBSServerInteractions.execute_api_call(new String(APICallBytes,StandardCharsets.UTF_8) );
 
@@ -346,7 +377,6 @@ public class TCPServerThread extends Thread{
                         // ---------------------------- POINT OF DISASTER -------------------------------------
 
                         // SERVICE STEP 4: SERVER RESPONSE
-
                         byte[] responseFieldServerResponse = "RESPONSE".getBytes();
                         // Now we make the JSONObject into a byte array
                         byte [] JSONObjectAnswerByteArray = answer.toString().getBytes(StandardCharsets.UTF_8);
@@ -440,6 +470,14 @@ public class TCPServerThread extends Thread{
                             throw new RuntimeException(e);
                         }
 
+                        Message QueryAnsweredMessage = uiHandler.obtainMessage();
+                        Bundle QueryAnsweredBundle = new Bundle();
+                        QueryAnsweredBundle.putBoolean("isAnswer",true);
+                        QueryAnsweredBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
+                        QueryAnsweredBundle.putInt("port",socket.getPort());
+                        QueryAnsweredMessage.setData(QueryAnsweredBundle);
+                        uiHandler.sendMessage(QueryAnsweredMessage);
+
                         Log.d("TCP SERVER","The ServerResponse has been sent to the Client!");
 
                         // NOW WE ARE GOING TO REPEAT THE LOOP TO RECEIVE ANY POSSIBLE FOLLOWING QUERY OR RECEIVE END COMMUNICATION OPTION (BYE)
@@ -452,17 +490,17 @@ public class TCPServerThread extends Thread{
 
                 }
 
-                /*
-                // read from client
-                String client_msg = inputStream.readUTF();
-                Log.d("TCP server","Message from client is "+client_msg);
-
-                // send response
-                String my_response = "Hello from server!";
-                outputStream.writeUTF(my_response);*/
-
                 socket.close();
                 Log.d("TCP server","Connection closed with " + socket.getInetAddress().getHostName() );
+
+                // updating the log on the server side
+                Message disconnectionMessage = uiHandler.obtainMessage();
+                Bundle disconnectionBundle = new Bundle();
+                disconnectionBundle.putBoolean("isDisconnection",true);
+                disconnectionBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
+                disconnectionBundle.putInt("port",socket.getPort());
+                disconnectionMessage.setData(disconnectionBundle);
+                uiHandler.sendMessage(disconnectionMessage);
 
             } catch (IOException e) {
                 throw new RuntimeException(e);

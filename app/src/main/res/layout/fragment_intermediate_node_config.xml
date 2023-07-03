@@ -75,4 +75,17 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.55" />
 
+    <ScrollView
+        android:id="@+id/server_log_SV"
+        android:layout_width="300dp"
+        android:layout_height="250dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/server_status"
+        app:layout_constraintVertical_bias="0.2">
+
+    </ScrollView>
+
 </androidx.constraintlayout.widget.ConstraintLayout>

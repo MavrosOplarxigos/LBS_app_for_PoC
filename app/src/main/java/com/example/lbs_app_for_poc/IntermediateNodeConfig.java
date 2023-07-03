@@ -7,11 +7,17 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import android.os.Handler;
+import android.os.Looper;
+import android.os.Message;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import org.w3c.dom.Text;
@@ -29,6 +35,8 @@ public class IntermediateNodeConfig extends Fragment {
     public static int my_port = -1;
     public static ServerSocket serverSocket;
     public static TCPServerThread serverThread;
+    public static ScrollView loggingSV;
+    public static LinearLayout loggingLL;
 
     public IntermediateNodeConfig() {
         // Required empty public constructor
@@ -106,6 +114,44 @@ public class IntermediateNodeConfig extends Fragment {
             server_status.setBackgroundColor(Color.YELLOW);
         }
 
+        // scroll view to log all the connections and queries the intermediate node receives
+        loggingSV = (ScrollView) view.findViewById(R.id.server_log_SV);
+        // add relative view to the scroll view
+        loggingLL = new LinearLayout(getContext());
+        loggingLL.setOrientation(LinearLayout.VERTICAL);
+        loggingSV.addView(loggingLL);
+
+        Handler tcpInfoHandler = new Handler(Looper.getMainLooper()) {
+            @Override
+            public void handleMessage(Message msg) {
+
+                Bundle bundle = msg.getData();
+
+                String ipAddress = bundle.getString("ipAddress");
+                int port = bundle.getInt("port");
+                TextView textView = new TextView(getContext());
+
+                if( bundle.containsKey("isConnectionAccept") ) {
+                    textView.setTextColor(Color.GREEN);
+                    textView.setText("Accepted connection from " + ipAddress + ":" + port);
+                } else if (bundle.containsKey("isDisconnection") ) {
+                    textView.setTextColor(Color.RED);
+                    textView.setText("Connection terminated by " + ipAddress + ":" + port);
+                } else if ( bundle.containsKey("isQuery") ) {
+                    textView.setTextColor(Color.CYAN);
+                    textView.setText("Query received from" + ipAddress + ":" + port);
+                } else if (bundle.containsKey("isAnswer")) {
+                    textView.setTextColor(Color.BLUE);
+                    textView.setText("Answered query from" + ipAddress + ":" + port);
+                } else{
+                    Log.d("TCP INFO LOGGER","ERROR: Title info not recognized!");
+                    return;
+                }
+                loggingLL.addView(textView);
+
+            }
+        };
+
         Button save_and_start = (Button) view.findViewById(R.id.server_button_start);
         save_and_start.setOnClickListener(
                 new View.OnClickListener() {
@@ -131,8 +177,9 @@ public class IntermediateNodeConfig extends Fragment {
                             }
                             // OK now we need to get connections on the server socket
                             // We would need a thread to do that right?
+
                             // TODO: figure out how to have a thread running even after the fragment is switched
-                            serverThread = new TCPServerThread(serverSocket);
+                            serverThread = new TCPServerThread(serverSocket,tcpInfoHandler);
                             serverThread.start();
 
                         } catch (IOException e) {
@@ -143,14 +190,9 @@ public class IntermediateNodeConfig extends Fragment {
                             throw new RuntimeException(e);
                         }
 
-
                     }
                 }
         );
-
-
-
-
 
     }
 
