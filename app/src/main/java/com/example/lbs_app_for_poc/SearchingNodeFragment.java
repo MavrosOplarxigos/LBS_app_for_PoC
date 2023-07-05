@@ -39,7 +39,12 @@ import android.widget.Toast;
 import com.example.lbs_app_for_poc.databinding.FragmentSecondBinding;
 import com.google.android.gms.maps.model.VisibleRegion;
 import com.google.maps.android.SphericalUtil;
+import com.google.maps.android.data.Feature;
+import com.google.maps.android.data.Layer;
+import com.google.maps.android.data.geojson.GeoJsonFeature;
 import com.google.maps.android.data.geojson.GeoJsonLayer;
+import com.google.maps.android.data.geojson.GeoJsonPoint;
+import com.google.maps.android.geometry.Point;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -568,7 +573,26 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
             // we remove the previous results layer if it exists
             results_layer.removeLayerFromMap();
         }
-        results_layer = new GeoJsonLayer(mMap, geojson );
+        results_layer = new GeoJsonLayer(mMap, geojson);
+
+        // setting the listener to show the names of the locations
+        results_layer.setOnFeatureClickListener(
+                new GeoJsonLayer.GeoJsonOnFeatureClickListener() {
+                    @Override
+                    public void onFeatureClick(Feature feature) {
+                        String name = feature.getProperty("name");
+                        GeoJsonPoint geoJsonPoint = (GeoJsonPoint) feature.getGeometry();
+                        LatLng latLng = geoJsonPoint.getCoordinates();
+
+                        MarkerOptions markerOptions = new MarkerOptions()
+                                .position(latLng)
+                                .title(name);
+
+                        mMap.addMarker(markerOptions).showInfoWindow();
+                    }
+                }
+        );
+
         results_layer.addLayerToMap();
     }
 
