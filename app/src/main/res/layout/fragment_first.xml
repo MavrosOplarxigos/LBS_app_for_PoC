@@ -58,5 +58,18 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.714" />
 
+    <Button
+        android:id="@+id/check_algo"
+        android:layout_width="300dp"
+        android:layout_height="90dp"
+        android:text="check algo"
+        android:textSize="20dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.495"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.914" />
+
 
 </androidx.constraintlayout.widget.ConstraintLayout>

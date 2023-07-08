@@ -74,7 +74,7 @@ public class TCPServerThread extends Thread{
                 // 1) HANDSHAKE STEP 1: RECEIVE CLIENT CREDS
                 // OK so now the client must sent his credentials to us
                 // We should expect the following format
-                // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+                // [HELLO]:5 | [CLIENT CERT LENGHT BYTES] | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
                 ByteArrayOutputStream baosClientHello = new ByteArrayOutputStream();
                 byte[] buffer = new byte[1000];
                 int bytesRead;
@@ -97,7 +97,7 @@ public class TCPServerThread extends Thread{
                 int ci = 0; // current index on bytesClientHello
                 int tempci = ci;
 
-                // HELLO
+                // [HELLO]
                 ByteArrayOutputStream baosClientHelloHello = new ByteArrayOutputStream();
                 for(int i=ci;(char)( bytesClientHello[i] ) != transmission_del;i++){
                     baosClientHelloHello.write( (byte) bytesClientHello[i] );
@@ -113,7 +113,7 @@ public class TCPServerThread extends Thread{
                 }
                 ci++;
 
-                // CLIENT CERTIFICATE LENGTH
+                // [CLIENT CERT LENGHT BYTES]
                 String certificateClientHelloLength = "";
                 for(int i=ci;(char)( bytesClientHello[i] ) != transmission_del;i++){
                     certificateClientHelloLength += (char) bytesClientHello[i];
@@ -129,7 +129,7 @@ public class TCPServerThread extends Thread{
                 }
                 ci++;
 
-                // CERTIFICATE BYTES
+                // [CERTIFICATE BYTES]
                 tempci = ci;
                 ByteArrayOutputStream baosClientHelloCertificate = new ByteArrayOutputStream();
                 for(int i=ci;i<ci+certificateClientHelloLengthInt;i++){
@@ -147,7 +147,7 @@ public class TCPServerThread extends Thread{
                 }
                 ci++;
 
-                // NONCE
+                // [NONCE]
                 tempci = ci;
                 ByteArrayOutputStream baosClientHelloNonce = new ByteArrayOutputStream();
                 for(int i=ci;i<ci+20;i++){
@@ -165,7 +165,7 @@ public class TCPServerThread extends Thread{
                 }
                 ci++;
 
-                // SIGNED NONCE UNTIL THE END NOW
+                // [SIGNED NONCE]
                 ByteArrayOutputStream baosClientHelloSignedNonce = new ByteArrayOutputStream();
                 for(int i=ci;i<bytesClientHello.length;i++){
                     baosClientHelloSignedNonce.write((byte)(bytesClientHello[i]));
@@ -173,7 +173,7 @@ public class TCPServerThread extends Thread{
                 fieldsClientHello[3] = baosClientHelloSignedNonce.toByteArray();
 
                 // CHECKING FIELDS
-                if(!checkFieldsHello(fieldsClientHello,"Server")){
+                if(!checkFieldsClientHello(fieldsClientHello,"Server")){
                     Log.d("TCP server","The received fields are incorrect! Closing the connection.");
                     socket.close();
                     continue;
@@ -182,7 +182,7 @@ public class TCPServerThread extends Thread{
                 Log.d("TCP server","The received fields are CORRECT!");
 
                 // 2) HANDSHAKE STEP 2: SEND SERVER CREDENTIALS TO THE CLIENT
-                // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+                // [HELLO]:5 | [CERTIFICATE LENGTH] | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
 
                 // HELLO
                 byte[] helloFieldServerHello = "HELLO".getBytes();
@@ -219,7 +219,7 @@ public class TCPServerThread extends Thread{
                 Log.d("TCP server","SUCCESS THE PEER CERTIFICATE IS NOW READY TO USE!");
 
                 // We are going to keep answering QUERIES until the client says BYE
-                // TODO: Add more reponsiveness from server side on faulty queries from client
+                // TODO: Add more responsiveness from server side on faulty queries from client
                 while(true) {
 
                     // 3) CLIENT MESSAGE: RECEIVE A MESSAGE FROM CLIENT (QUERY,BYE)
@@ -320,7 +320,7 @@ public class TCPServerThread extends Thread{
                         }
                         ci++;
 
-                        // API CALL ENCRYPTED BYTES
+                        // [API_CALL_ENC_BYTES]
                         ByteArrayOutputStream baosClientQueryAPICallEncBytes = new ByteArrayOutputStream();
                         for(int i=ci;( i < ci+APICallEncBytesLength ) && ( i < total_bytesClientMessage );i++){
                             baosClientQueryAPICallEncBytes.write(bytesClientMessage[i]);
@@ -337,7 +337,7 @@ public class TCPServerThread extends Thread{
                         }
                         ci++;
 
-                        // API CALL SIGNED BYTES
+                        // [API_CALL_SIGNED_BYTES]
                         ByteArrayOutputStream baosClientQueryAPICallSignedBytes = new ByteArrayOutputStream();
                         for(int i=ci;i < total_bytesClientMessage;i++){
                             baosClientQueryAPICallSignedBytes.write(bytesClientMessage[i]);
@@ -378,17 +378,32 @@ public class TCPServerThread extends Thread{
 
                         // SERVICE STEP 4: SERVER RESPONSE
                         byte[] responseFieldServerResponse = "RESPONSE".getBytes();
+
                         // Now we make the JSONObject into a byte array
                         byte [] JSONObjectAnswerByteArray = answer.toString().getBytes(StandardCharsets.UTF_8);
-                        byte [] JSONObjectAnswerByteArraySigned = InterNodeCrypto.signPrivateKeyByteArray(JSONObjectAnswerByteArray);
-                        byte [] JSONObjectAnswerByteArraySize = ("" + JSONObjectAnswerByteArray.length).getBytes();
+                        // Now encrypt the array
+
+                        byte [] EncryptedJSONObjectAnswerByteArray = null;
+                        try {
+                            EncryptedJSONObjectAnswerByteArray = InterNodeCrypto.encryptWithPeerKey(JSONObjectAnswerByteArray);
+                        }
+                        catch (Exception e){
+                            Log.d("TCP Server","For some reason we can't encrypt the JSONObjectAnswerByteArray!");
+                        }
+
+                        Log.d("TCP Server","The length of the JSONObjectAnswerByteArray is " + JSONObjectAnswerByteArray.length);
+                        Log.d("TCP Server","The length of the EncryptedJSONObjectAnswerByteArray is " + EncryptedJSONObjectAnswerByteArray.length);
+
+                        byte [] EncryptedJSONObjectAnswerByteArraySigned = InterNodeCrypto.signPrivateKeyByteArray(EncryptedJSONObjectAnswerByteArray);
+                        byte [] EncryptedJSONObjectAnswerByteArraySize = ("" + EncryptedJSONObjectAnswerByteArray.length).getBytes();
 
                         // 4.1) SERVER RESPONSE DECLARATION: DECLARE TO THE CLIENT THE SIZE OF THE RESPONSE SO HE CAN ACTIVELY WAIT FOR ALL BYTES TO ARRIVE
                         // RATHER THAN SKIPPING READING THEM AS SOON AS THE BUFFER GETS EMPTY DUE TO DATA TRASMISSION DELAYS (MOST PROBABLY).
                         // [RESPONSE] | [RESPONSE SIZE IN BYTES]
 
-                        int ServerResponseSize = JSONObjectAnswerByteArraySize.length + 1 + JSONObjectAnswerByteArray.length + 1 + JSONObjectAnswerByteArraySigned.length;
-                        Log.d("TCP Server","The ServerResponseSize has been declared to be " + ServerResponseSize + " bytes!");
+                        int ServerResponseSize = EncryptedJSONObjectAnswerByteArraySize.length + 1 + EncryptedJSONObjectAnswerByteArray.length
+                                + 1 + EncryptedJSONObjectAnswerByteArraySigned.length;
+                        Log.d("TCP Server","The ServerResponseSize has been calculated to be " + ServerResponseSize + " bytes!");
                         byte [] ServerResponseSizeByteArray = ("" + ServerResponseSize).getBytes();
 
                         ByteArrayOutputStream baosServerResponseDeclaration = new ByteArrayOutputStream();
@@ -403,6 +418,7 @@ public class TCPServerThread extends Thread{
                         }
 
                         byte [] ServerResponseDeclaration = baosServerResponseDeclaration.toByteArray();
+                        Log.d("TCP Server","The server response declaration message is: " + new String(ServerResponseDeclaration,StandardCharsets.UTF_8) );
                         outputStream.write(ServerResponseDeclaration);
 
                         // 4.2) CLIENT DECLARATION ACCEPT
@@ -429,27 +445,26 @@ public class TCPServerThread extends Thread{
                         }
 
                         // 4.3) SERVER RESPONSE: SEND THE ACTUAL RESPONSE BYTES TO THE CLIENT
-                        // [JSONObjectAnswerByteArraySize] | [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
+                        // [EncryptedJSONObjectAnswerByteArraySize] |
+                        // [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
 
-                        // 24238
-                        Log.d("TCP Server","The JSONObjectAnswerByteArray size is " + JSONObjectAnswerByteArray.length );
-                        Log.d("TCP Server","The JSONObjectAnswerByteArraySize is " + new String(JSONObjectAnswerByteArraySize,StandardCharsets.UTF_8) );
-                        Log.d("TCP Server","The JSONObjectAnswerByteArraySigned size is " + JSONObjectAnswerByteArraySigned.length );
+                        Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArray size is " + EncryptedJSONObjectAnswerByteArray.length );
+                        Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArraySize is " + new String(EncryptedJSONObjectAnswerByteArraySize,StandardCharsets.UTF_8) );
+                        Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArraySigned size is " + EncryptedJSONObjectAnswerByteArraySigned.length );
 
                         ByteArrayOutputStream baosServerRespone = new ByteArrayOutputStream();
                         try {
-                            baosServerRespone.write(JSONObjectAnswerByteArraySize);
+                            baosServerRespone.write(EncryptedJSONObjectAnswerByteArraySize);
                             baosServerRespone.write(transmission_del);
-                            baosServerRespone.write(JSONObjectAnswerByteArray);
+                            baosServerRespone.write(EncryptedJSONObjectAnswerByteArray);
                             baosServerRespone.write(transmission_del);
-                            baosServerRespone.write(JSONObjectAnswerByteArraySigned);
+                            baosServerRespone.write(EncryptedJSONObjectAnswerByteArraySigned);
                         }
                         catch (Exception e){
                             Log.d("TCP Server","ERROR: Could not compose the byteArrayOutputStream for the ServerResponse.");
                             throw e;
                         }
 
-                        // 24510
                         byte [] ServerResponse = baosServerRespone.toByteArray();
                         Log.d("TCP Server","The entire ServerResponse size is " + ServerResponse.length );
 
@@ -528,7 +543,7 @@ public class TCPServerThread extends Thread{
 
     }
 
-    public static boolean checkFieldsHello(byte [][] arr, String receiver){
+    public static boolean checkFieldsClientHello(byte [][] arr, String receiver){
 
         if(arr.length > 4){
             Log.d("TCP " + receiver,"More than 4 fields received in Client Hello. Dropping connection!");

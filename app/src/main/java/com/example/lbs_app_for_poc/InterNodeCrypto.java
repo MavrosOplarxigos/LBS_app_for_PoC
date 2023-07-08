@@ -228,16 +228,64 @@ public class InterNodeCrypto {
     }
 
     public static byte [] encryptWithPeerKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init( Cipher.ENCRYPT_MODE , (Key) peer_cert.getPublicKey() );
-        byte[] enc_data = cipher.doFinal(input);
+
+        // RSA-OAEP / SHA-256 hashing / MGF1 mask generation
+        // PKCS#1 v2.1 (RSA Cryptography Standard) by RSA Laboratories
+        // RFC 8017 (PKCS #1: RSA Cryptography Specifications) published by the Internet Engineering Task Force (IETF).
+
+        Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+        cipher.init(Cipher.ENCRYPT_MODE, peer_cert.getPublicKey() );
+
+        // Determine the maximum block size for encryption
+        int blockSize = cipher.getBlockSize();
+
+        // Calculate the size of the output array
+        int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);
+        byte[] enc_data = new byte[outputSize];
+
+        // Encrypt block by block
+        int inputOffset = 0;
+        int outputOffset = 0;
+        while (inputOffset < input.length) {
+            int inputLength = Math.min(blockSize, input.length - inputOffset);
+            byte[] inputBlock = new byte[inputLength];
+            System.arraycopy(input, inputOffset, inputBlock, 0, inputLength);
+            byte[] encryptedBlock = cipher.doFinal(inputBlock);
+            System.arraycopy(encryptedBlock, 0, enc_data, outputOffset, encryptedBlock.length);
+            inputOffset += blockSize;
+            outputOffset += encryptedBlock.length;
+        }
+
         return enc_data;
+
     }
 
     public static byte [] decryptWithOwnKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
-        Cipher cipher = Cipher.getInstance("RSA");
-        cipher.init( Cipher.DECRYPT_MODE , (Key) InterNodeCrypto.my_key );
-        byte[] dec_data = cipher.doFinal(input);
+
+        // Create the RSA cipher with OAEP padding
+        Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+        cipher.init(Cipher.DECRYPT_MODE, InterNodeCrypto.my_key);
+
+        // Determine the maximum block size for decryption
+        int blockSize = cipher.getBlockSize();
+
+        // Calculate the size of the output array
+        int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);
+        byte[] dec_data = new byte[outputSize];
+
+        // Decrypt block by block
+        int inputOffset = 0;
+        int outputOffset = 0;
+        while (inputOffset < input.length) {
+            int inputLength = Math.min(blockSize, input.length - inputOffset);
+            byte[] inputBlock = new byte[inputLength];
+            System.arraycopy(input, inputOffset, inputBlock, 0, inputLength);
+            byte[] decryptedBlock = cipher.doFinal(inputBlock);
+            System.arraycopy(decryptedBlock, 0, dec_data, outputOffset, decryptedBlock.length);
+            inputOffset += blockSize;
+            outputOffset += decryptedBlock.length;
+        }
+
         return dec_data;
     }
 

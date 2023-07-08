@@ -463,19 +463,19 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         Log.d("TCP CLIENT","SUCCESS: Received ServerResponse. Size of byte array is " + bytesServerResponse.length);
 
                         // SEPARATING THE FIELDS
-                        // [JSONObjectAnswerByteArraySize] | [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
-                        byte [][] fieldsServerResponse = new byte[2][]; // [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
+                        // [EncryptedJSONObjectAnswerByteArraySize] | [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
+                        byte [][] fieldsServerResponse = new byte[2][]; // [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
                         ci = 0; // current index bytesServerResponse
                         tempci = ci;
 
-                        // JSONObjectAnswerByteArraySize
-                        String JSONObjectAnswerByteArraySizeString = "";
+                        // EncryptedJSONObjectAnswerByteArraySize
+                        String EncryptedJSONObjectAnswerByteArraySizeString = "";
                         for(int i=ci;(char)( bytesServerResponse[i] ) != TCPServerThread.transmission_del; i++){
-                            JSONObjectAnswerByteArraySizeString += (char)( bytesServerResponse[i] );
+                            EncryptedJSONObjectAnswerByteArraySizeString += (char)( bytesServerResponse[i] );
                             ci = i;
                         }
-                        Log.d("TCP CLIENT","The JSONObjectAnswerByteArraySizeString is " + JSONObjectAnswerByteArraySizeString);
-                        int JSONObjectAnswerByteArraySize = Integer.parseInt(JSONObjectAnswerByteArraySizeString);
+                        Log.d("TCP CLIENT","The EncryptedJSONObjectAnswerByteArraySizeString is " + EncryptedJSONObjectAnswerByteArraySizeString);
+                        int EncryptedJSONObjectAnswerByteArraySize = Integer.parseInt(EncryptedJSONObjectAnswerByteArraySizeString);
 
                         ci++; // Now must be on delimiter
                         if( (char)(bytesServerResponse[ci]) != TCPServerThread.transmission_del ){
@@ -485,10 +485,10 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         }
                         ci++;
 
-                        // JSONObjectAnswerByteArray
+                        // EncryptedJSONObjectAnswerByteArray
                         tempci = ci;
                         ByteArrayOutputStream baosServerResponseJSONObjectAnswerByteArray = new ByteArrayOutputStream();
-                        for(int i=ci;i<ci+JSONObjectAnswerByteArraySize;i++){
+                        for(int i=ci;i<ci+EncryptedJSONObjectAnswerByteArraySize;i++){
                             baosServerResponseJSONObjectAnswerByteArray.write((byte)bytesServerResponse[i]);
                             tempci = i;
                         }
@@ -512,6 +512,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                         Log.d("TCP client","The response has been received by the intermediate node! Now performing checks!");
 
+                        // Client: Success/Failure ← Verpub_server(Er,Sr)
                         // Check that the JSON array is indeed signed by the peer server
                         try {
                             if( !CryptoChecks.isSignedByCert(fieldsServerResponse[0],fieldsServerResponse[1],InterNodeCrypto.peer_cert) ){
@@ -531,8 +532,26 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                         Log.d("TCP client","SUCCESS: The received response's signature is correct!");
 
-                        // Now make the JSON byte array to JSONObject again
-                        String JSONObjectAnswer = new String(fieldsServerResponse[0],StandardCharsets.UTF_8);
+                        // Now we will decrypt the encrypted JSON object
+                        byte [] decryptedJSON;
+                        try {
+                            decryptedJSON = InterNodeCrypto.decryptWithOwnKey(fieldsServerResponse[0]);
+                        } catch (NoSuchPaddingException e) {
+                            throw new RuntimeException(e);
+                        } catch (NoSuchAlgorithmException e) {
+                            throw new RuntimeException(e);
+                        } catch (InvalidKeyException e) {
+                            throw new RuntimeException(e);
+                        } catch (IllegalBlockSizeException e) {
+                            throw new RuntimeException(e);
+                        } catch (BadPaddingException e) {
+                            throw new RuntimeException(e);
+                        }
+
+                        Log.d("TCP client","SUCCESS: The decryption of the response has finished!");
+
+                        // Now make the decrypted JSON byte array to JSONObject again
+                        String JSONObjectAnswer = new String(decryptedJSON,StandardCharsets.UTF_8);
                         JSONObject answerJSON;
                         try {
                             answerJSON = new JSONObject(JSONObjectAnswer);

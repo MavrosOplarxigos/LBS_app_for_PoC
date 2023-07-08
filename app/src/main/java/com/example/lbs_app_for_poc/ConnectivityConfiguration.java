@@ -236,6 +236,7 @@ public class ConnectivityConfiguration extends Fragment {
                             baosClientHello.write(certificateFieldClientHelloLength);
                             baosClientHello.write((byte)(TCPServerThread.transmission_del));
                             // the certificate filed might contain | already so we just save the size of it and that's it
+                            // so we won't mistake it for a delimiter because we know its length in bytes exactly as it is
                             baosClientHello.write(certificateFieldClientHello);
                             baosClientHello.write((byte)(TCPServerThread.transmission_del));
                             // the nonce field is always 20 bytes
@@ -405,7 +406,7 @@ public class ConnectivityConfiguration extends Fragment {
     public boolean checkFieldsHelloServer(byte [][] arr) {
         // For now client and server use the same fields in the hello messages
         // So we can use the same function to check that the fields received are correct
-        return TCPServerThread.checkFieldsHello(arr,"Client");
+        return TCPServerThread.checkFieldsClientHello(arr,"Client");
     }
 
     byte [] str_to_ip_array(String input) throws InvalidParameterException {
