@@ -37,7 +37,8 @@ public class TCPServerThread extends Thread{
     private Handler uiHandler;
     public static final char transmission_del = '|';
     public static final int max_transmission_cutoff = 300000; // 301K bytes per message exchange
-    // maybe a scroll view will be given as input to the constructor and we can report logs to that scroll view with text views
+    public X509Certificate current_peer_cert; // the current peer of the connection every time
+    public String current_peer_id;
 
     public TCPServerThread(ServerSocket s,Handler uiHandler){
         serverSocket = s;
@@ -68,13 +69,11 @@ public class TCPServerThread extends Thread{
                 connectionBundle.putBoolean("isConnectionAccept",true);
                 connectionBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
                 connectionBundle.putInt("port",socket.getPort());
-                connectionMessage.setData(connectionBundle);
-                uiHandler.sendMessage(connectionMessage);
 
                 // 1) HANDSHAKE STEP 1: RECEIVE CLIENT CREDS
                 // OK so now the client must sent his credentials to us
                 // We should expect the following format
-                // [HELLO]:5 | [CLIENT CERT LENGHT BYTES] | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+                // [HELLO]:5 | [CLIENT CERT LENGHT BYTES] | [CERTIFICATE BYTES]:~2K | [Timestamp]:8 | [Signed_Timestamp]: 256
                 ByteArrayOutputStream baosClientHello = new ByteArrayOutputStream();
                 byte[] buffer = new byte[1000];
                 int bytesRead;
@@ -147,10 +146,10 @@ public class TCPServerThread extends Thread{
                 }
                 ci++;
 
-                // [NONCE]
+                // [timestamp]
                 tempci = ci;
                 ByteArrayOutputStream baosClientHelloNonce = new ByteArrayOutputStream();
-                for(int i=ci;i<ci+20;i++){
+                for(int i=ci;i<ci+InterNodeCrypto.TIMESTAMP_BYTES;i++){
                     baosClientHelloNonce.write((byte)(bytesClientHello[i]));
                     tempci=i;
                 }
@@ -159,13 +158,13 @@ public class TCPServerThread extends Thread{
 
                 ci++; // Now must be on delimiter
                 if( (char)( bytesClientHello[ci] ) != transmission_del){
-                    Log.d("TCP server","Expected " + transmission_del + " after the NONCE bytes. Found " + bytesClientHello[ci]);
+                    Log.d("TCP server","Expected " + transmission_del + " after the timestamp bytes. Found " + bytesClientHello[ci]);
                     socket.close();
                     continue;
                 }
                 ci++;
 
-                // [SIGNED NONCE]
+                // [SIGNED TIMESTAMP]
                 ByteArrayOutputStream baosClientHelloSignedNonce = new ByteArrayOutputStream();
                 for(int i=ci;i<bytesClientHello.length;i++){
                     baosClientHelloSignedNonce.write((byte)(bytesClientHello[i]));
@@ -176,28 +175,32 @@ public class TCPServerThread extends Thread{
                 if(!checkFieldsClientHello(fieldsClientHello,"Server")){
                     Log.d("TCP server","The received fields are incorrect! Closing the connection.");
                     socket.close();
+                    // TODO: Add message for timestamp being too old
                     continue;
                 }
+                Log.d("TCP server","Client Hello: The received fields are CORRECT!");
 
-                Log.d("TCP server","The received fields are CORRECT!");
+                // Saving into variables the data that we need from ClientHello
+                current_peer_cert = InterNodeCrypto.CertFromByteArray(fieldsClientHello[1]);
+                Log.d("TCP server","Client Hello: SUCCESS the peer certificate is now saved and ready to use!");
+                current_peer_id = current_peer_cert.getSubjectDN().toString();
+
+                // Logging connection now that we know the ID of the user
+                connectionBundle.putInt("MyPort",serverSocket.getLocalPort());
+                connectionBundle.putString("PeerID",current_peer_id);
+                connectionMessage.setData(connectionBundle);
+                uiHandler.sendMessage(connectionMessage);
 
                 // 2) HANDSHAKE STEP 2: SEND SERVER CREDENTIALS TO THE CLIENT
-                // [HELLO]:5 | [CERTIFICATE LENGTH] | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+                // [HELLO]:5 | [CERTIFICATE LENGTH] | [CERTIFICATE BYTES]:~2K | [timestamp]: 8 | [signed timestamp]: 256
 
                 // HELLO
                 byte[] helloFieldServerHello = "HELLO".getBytes();
                 // CERTIFICATE
                 byte[] certificateFieldServerHello = InterNodeCrypto.my_cert.getEncoded();
                 byte[] certificateFieldServerHelloLength = ("" + certificateFieldServerHello.length).toString().getBytes();
-                SecureRandom secureRandom;
-                byte [] nonceFieldServerHello;
-                byte [] signedNonceFieldServerHello;
-                // NONCE
-                secureRandom = new SecureRandom();
-                nonceFieldServerHello = new byte[20];
-                secureRandom.nextBytes(nonceFieldServerHello);
-                // SINGED NONCE
-                signedNonceFieldServerHello = InterNodeCrypto.signPrivateKeyByteArray(nonceFieldServerHello);
+
+                CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestamp();
 
                 ByteArrayOutputStream baosServerHello = new ByteArrayOutputStream();
                 baosServerHello.write(helloFieldServerHello);
@@ -206,17 +209,14 @@ public class TCPServerThread extends Thread{
                 baosServerHello.write((byte)(transmission_del));
                 baosServerHello.write(certificateFieldServerHello);
                 baosServerHello.write((byte)(transmission_del));
-                baosServerHello.write(nonceFieldServerHello);
+                baosServerHello.write(cryptoTimestamp.timestamp);
                 baosServerHello.write((byte)(transmission_del));
-                baosServerHello.write(signedNonceFieldServerHello);
+                baosServerHello.write(cryptoTimestamp.signed_timestamp);
                 // Here maybe add AES key exchange as well?
 
                 byte [] ServerHello = baosServerHello.toByteArray();
                 outputStream.write(ServerHello);
                 // OK now the client should change its status to be connected
-
-                InterNodeCrypto.save_peer_cert(fieldsClientHello[1]);
-                Log.d("TCP server","SUCCESS THE PEER CERTIFICATE IS NOW READY TO USE!");
 
                 // We are going to keep answering QUERIES until the client says BYE
                 // TODO: Add more responsiveness from server side on faulty queries from client
@@ -284,6 +284,7 @@ public class TCPServerThread extends Thread{
                         QueryBundle.putBoolean("isQuery",true);
                         QueryBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
                         QueryBundle.putInt("port",socket.getPort());
+                        QueryBundle.putString("PeerID",current_peer_id);
 
                         // SERVICE STEP 1: RECEIVE AN API CALL AS A STRING
                         // ENCRYPTED WITH SERVERS PUBLIC KEY
@@ -345,7 +346,7 @@ public class TCPServerThread extends Thread{
                         fieldsClientQuery[1] = baosClientQueryAPICallSignedBytes.toByteArray();
 
                         // SERVICE STEP 2: a) CHECK THAT THE SIGNATURE CORRESPONDS TO THE ENCRYPTED API CALL BYTE ARRAY (USING CLIENT'S CERT)
-                        if( !CryptoChecks.isSignedByCert(fieldsClientQuery[0],fieldsClientQuery[1],InterNodeCrypto.peer_cert) ){
+                        if( !CryptoChecks.isSignedByCert(fieldsClientQuery[0],fieldsClientQuery[1],current_peer_cert) ){
                             Log.d("TCP server","ERROR: The received query signature is incorrect!");
                             return;
                         }
@@ -385,7 +386,7 @@ public class TCPServerThread extends Thread{
 
                         byte [] EncryptedJSONObjectAnswerByteArray = null;
                         try {
-                            EncryptedJSONObjectAnswerByteArray = InterNodeCrypto.encryptWithPeerKey(JSONObjectAnswerByteArray);
+                            EncryptedJSONObjectAnswerByteArray = InterNodeCrypto.encryptWithPeerKey(JSONObjectAnswerByteArray,current_peer_cert);
                         }
                         catch (Exception e){
                             Log.d("TCP Server","For some reason we can't encrypt the JSONObjectAnswerByteArray!");
@@ -490,6 +491,7 @@ public class TCPServerThread extends Thread{
                         QueryAnsweredBundle.putBoolean("isAnswer",true);
                         QueryAnsweredBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
                         QueryAnsweredBundle.putInt("port",socket.getPort());
+                        QueryAnsweredBundle.putString("PeerID",current_peer_id);
                         QueryAnsweredMessage.setData(QueryAnsweredBundle);
                         uiHandler.sendMessage(QueryAnsweredMessage);
 
@@ -514,6 +516,7 @@ public class TCPServerThread extends Thread{
                 disconnectionBundle.putBoolean("isDisconnection",true);
                 disconnectionBundle.putString("ipAddress",socket.getInetAddress().getHostAddress());
                 disconnectionBundle.putInt("port",socket.getPort());
+                disconnectionBundle.putString("PeerID",current_peer_id);
                 disconnectionMessage.setData(disconnectionBundle);
                 uiHandler.sendMessage(disconnectionMessage);
 
@@ -555,7 +558,13 @@ public class TCPServerThread extends Thread{
             return false;
         }
 
-        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [Timestamp]:8 | [Signed Timestamp]: 256
+
+        // Check timestamp freshness
+        if( !InterNodeCrypto.isTimestampFresh(arr[2]) ){
+            Log.d("TCP " + receiver,"The timestamp is not fresh!");
+            return false;
+        }
 
         // HELLO
         if( !( Arrays.equals(arr[0], "HELLO".getBytes()) ) ) {
@@ -587,30 +596,30 @@ public class TCPServerThread extends Thread{
         }
 
         // CHECK NONCE SIZE
-        if( arr[2].length != 20 ){
-            Log.d("TCP " + receiver,"Incorrect nonce size!");
+        if( arr[2].length != InterNodeCrypto.TIMESTAMP_BYTES ){
+            Log.d("TCP " + receiver,"Incorrect timestampe size!");
             return false;
         }
 
-        // CHECK THAT THE NONCE IS SIGNED CORRECTLY
+        // CHECK THAT THE timestamp IS SIGNED CORRECTLY
         try {
             if ( !(CryptoChecks.isSignedByCert(arr[2], arr[3], cert)) ) {
-                Log.d("TCP " + receiver,"The signed Nonce is NOT SIGNED by the public key of the certificate!");
+                Log.d("TCP " + receiver,"The signed timestamp is NOT SIGNED by the public key of the certificate!");
                 return false;
             }
         }
         catch (Exception e){
-            Log.d("TCP " + receiver,"Can't verify the nonce signature!");
+            Log.d("TCP " + receiver,"Can't verify the timestamp signature!");
             e.printStackTrace();
             return false;
         }
 
         Log.d("TCP " + receiver, "The fields check out and they are the following: ");
-        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]: 8 | [SIGNED_NONCE]: 256
         Log.d("TCP " + receiver, "HELLO = " + arr[0] );
         Log.d("TCP " + receiver, "CERT = " + InterNodeCrypto.getCertDetails(cert) );
-        Log.d("TCP " + receiver, "NONCE = " + arr[2] );
-        Log.d("TCP " + receiver, "SIGNED NONCE = " + arr[3] );
+        Log.d("TCP " + receiver, "timestamp = " + arr[2] );
+        Log.d("TCP " + receiver, "signed timestamp = " + arr[3] );
 
         return true;
 

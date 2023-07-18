@@ -8,6 +8,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 
+import android.system.ErrnoException;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -38,6 +39,7 @@ import java.security.SecureRandom;
 import java.security.SignatureException;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.Collections;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -54,6 +56,8 @@ public class ConnectivityConfiguration extends Fragment {
     public static TextView connectivity_status_TV;
     public static DataInputStream inputStream = null;
     public static DataOutputStream outputStream = null;
+
+    public static X509Certificate current_peer_cert = null;
 
     public ConnectivityConfiguration() {
         // Required empty public constructor
@@ -203,7 +207,25 @@ public class ConnectivityConfiguration extends Fragment {
                         try {
 
                             // COMMUNICATION PROTOCOL START
-                            my_client_socket = new Socket(my_peer_ip_address,peer_port);
+                            try {
+                                my_client_socket = new Socket(my_peer_ip_address, peer_port);
+                            }
+                            catch (Exception e){
+                                if(e.getMessage().contains("connect failed: ECONNREFUSED")){
+                                    Log.d("TCP Client","The intermediate node refused connection on its port " + peer_port);
+                                    Toast.makeText(getContext(), "The peer refused connection on port " + peer_port, Toast.LENGTH_SHORT).show();
+                                    connectivity_status_TV.setText("Refused!");
+                                    connectivity_status_TV.setBackgroundColor(Color.RED);
+                                    return;
+                                }
+                                if(e.getMessage().contains("Host unreachable")){
+                                    Toast.makeText(getContext(), "The peer's IP is unreachable", Toast.LENGTH_SHORT).show();
+                                    connectivity_status_TV.setText("Unreachable!");
+                                    connectivity_status_TV.setBackgroundColor(Color.RED);
+                                    return;
+                                }
+                                throw e;
+                            }
 
                             inputStream = new DataInputStream(my_client_socket.getInputStream());
                             outputStream = new DataOutputStream(my_client_socket.getOutputStream());
@@ -213,22 +235,15 @@ public class ConnectivityConfiguration extends Fragment {
                             // 1) HANDSHAKE STEP 1: SEND CLIENT CREDS
                             // OK so now the client must sent his credentials to the server
                             // Server expects the following format
-                            // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+                            // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
 
                             // HELLO
                             byte[] helloField = "HELLO".getBytes();
                             // CERTIFICATE
                             byte[] certificateFieldClientHello = InterNodeCrypto.my_cert.getEncoded();
                             byte[] certificateFieldClientHelloLength = ("" + certificateFieldClientHello.length).toString().getBytes();
-                            SecureRandom secureRandom;
-                            byte [] nonceFieldClientHello;
-                            byte [] signedNonceFieldClientHello;
-                            // NONCE
-                            secureRandom = new SecureRandom();
-                            nonceFieldClientHello = new byte[20];
-                            secureRandom.nextBytes(nonceFieldClientHello);
-                            // SINGED NONCE
-                            signedNonceFieldClientHello = InterNodeCrypto.signPrivateKeyByteArray(nonceFieldClientHello);
+
+                            CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestamp();
 
                             ByteArrayOutputStream baosClientHello = new ByteArrayOutputStream();
                             baosClientHello.write(helloField);
@@ -239,10 +254,9 @@ public class ConnectivityConfiguration extends Fragment {
                             // so we won't mistake it for a delimiter because we know its length in bytes exactly as it is
                             baosClientHello.write(certificateFieldClientHello);
                             baosClientHello.write((byte)(TCPServerThread.transmission_del));
-                            // the nonce field is always 20 bytes
-                            baosClientHello.write(nonceFieldClientHello);
+                            baosClientHello.write(cryptoTimestamp.timestamp);
                             baosClientHello.write((byte)(TCPServerThread.transmission_del));
-                            baosClientHello.write(signedNonceFieldClientHello);
+                            baosClientHello.write(cryptoTimestamp.signed_timestamp);
                             // Here maybe add AES key exchange as well?
 
                             byte [] ClientHello = baosClientHello.toByteArray();
@@ -253,7 +267,7 @@ public class ConnectivityConfiguration extends Fragment {
                             Log.d("TCP CLIENT","Sent Client Hello!");
 
                             // 2) HANDSHAKE STEP 2: RECEIVE SERVER CREDENTIALS
-                            // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [NONCE]:20 | [SIGNED_NONCE]: 20
+                            // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
 
                             ByteArrayOutputStream baosServerHello = new ByteArrayOutputStream();
                             byte[] buffer = new byte[1000];
@@ -327,10 +341,10 @@ public class ConnectivityConfiguration extends Fragment {
                             }
                             ci++;
 
-                            // NONCE
+                            // timestamp
                             tempci = ci;
                             ByteArrayOutputStream baosServerHelloNonce = new ByteArrayOutputStream();
-                            for(int i=ci;i<ci+20;i++){
+                            for(int i=ci;i<ci+InterNodeCrypto.TIMESTAMP_BYTES;i++){
                                 baosServerHelloNonce.write((byte)(bytesServerHello[i]));
                                 tempci=i;
                             }
@@ -345,7 +359,7 @@ public class ConnectivityConfiguration extends Fragment {
                             }
                             ci++;
 
-                            // SIGNED NONCE UNTIL THE END NOW
+                            // signed timestamp
                             ByteArrayOutputStream baosServerHelloSignedNonce = new ByteArrayOutputStream();
                             for(int i=ci;i<bytesServerHello.length;i++){
                                 baosServerHelloSignedNonce.write((byte)(bytesServerHello[i]));
@@ -364,7 +378,7 @@ public class ConnectivityConfiguration extends Fragment {
                             connectivity_status_TV.setBackgroundColor(Color.GREEN);
 
                             // now we will use the socket for communication from now on
-                            InterNodeCrypto.save_peer_cert(fieldsServerHello[1]);
+                            current_peer_cert = InterNodeCrypto.CertFromByteArray(fieldsServerHello[1]);
                             Log.d("TCP CLIENT","SUCCESS THE PEER CERTIFICATE IS NOW READY TO USE!");
 
                         } catch (IOException e) {

@@ -246,6 +246,19 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                             return;
                         }
 
+                        // we must have a peer to forward the request to
+                        if(ConnectivityConfiguration.current_peer_cert == null){
+                            Log.d("SEARCH CLICK","No peer to forward the request to!");
+                            Toast.makeText(getContext(), "No peer to forward the request to!", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
+                        if(ConnectivityConfiguration.my_client_socket.isClosed()){
+                            Log.d("SEARCH CLICK","The peer closed the connection!");
+                            Toast.makeText(getContext(), "The peer closed the connection!", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+
                         if(msi.keyword.isEmpty()){
                             Log.d("SEARCH CLICK","The search keyword is undefined");
                             Toast.makeText(getContext(), "Please specify a keyword first", Toast.LENGTH_SHORT).show();
@@ -282,7 +295,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                         byte [] APICallEncryptedBytesClientQuery;
                         try {
-                            APICallEncryptedBytesClientQuery = InterNodeCrypto.encryptWithPeerKey(APICallBytesClientQuery);
+                            APICallEncryptedBytesClientQuery = InterNodeCrypto.encryptWithPeerKey(APICallBytesClientQuery,ConnectivityConfiguration.current_peer_cert);
                         } catch (NoSuchPaddingException e) {
                             throw new RuntimeException(e);
                         } catch (NoSuchAlgorithmException e) {
@@ -515,7 +528,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // Client: Success/Failure ← Verpub_server(Er,Sr)
                         // Check that the JSON array is indeed signed by the peer server
                         try {
-                            if( !CryptoChecks.isSignedByCert(fieldsServerResponse[0],fieldsServerResponse[1],InterNodeCrypto.peer_cert) ){
+                            if( !CryptoChecks.isSignedByCert(fieldsServerResponse[0],fieldsServerResponse[1],ConnectivityConfiguration.current_peer_cert) ){
                                 Log.d("TCP client","The received response signature is not correct!");
                                 Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
                                 return;

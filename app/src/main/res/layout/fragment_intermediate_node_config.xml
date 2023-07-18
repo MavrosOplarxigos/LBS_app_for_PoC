@@ -15,7 +15,7 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.10" />
+        app:layout_constraintVertical_bias="0.05" />
 
     <TextView
         android:id="@+id/ip_address_value_intermediate_node"
@@ -26,66 +26,68 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.15" />
+        app:layout_constraintVertical_bias="0.10" />
 
     <TextView
         android:id="@+id/server_port_title_intermediate_node"
         android:layout_width="231dp"
         android:layout_height="37dp"
-        android:text="Server Port"
+        android:text="Specific server port to open"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.25" />
+        app:layout_constraintVertical_bias="0.15" />
 
     <EditText
         android:id="@+id/server_port_value_intermediate_node"
         android:layout_width="231dp"
         android:layout_height="45dp"
         android:text="55777"
+        android:inputType="number"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.30" />
+        app:layout_constraintVertical_bias="0.20" />
 
     <Button
         android:id="@+id/server_button_start"
-        android:layout_width="241dp"
-        android:layout_height="79dp"
-        android:text="SAVE\n&amp;\nSTART/RESTART SERVER"
+        android:layout_width="320dp"
+        android:layout_height="50dp"
+        android:text="START SERVER ON single PORT"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.47"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.414" />
+        app:layout_constraintVertical_bias="0.28" />
 
-    <TextView
-        android:id="@+id/server_status"
-        android:layout_width="231dp"
-        android:layout_height="37dp"
-        android:text="SERVER STATUS"
-        android:textAlignment="center"
-        android:gravity="center"
+    <Button
+        android:id="@+id/multiport_button_start"
+        android:layout_width="330dp"
+        android:textSize="12dp"
+        android:layout_height="50dp"
+        android:text="START SERVER ON 10 RANDOM PORTS"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.47"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.55" />
+        app:layout_constraintTop_toBottomOf="@+id/server_button_start"
+        app:layout_constraintVertical_bias="0" />
+
 
     <ScrollView
         android:id="@+id/server_log_SV"
         android:layout_width="300dp"
-        android:layout_height="250dp"
+        android:layout_height="400dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintVertical_bias="0.1"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/server_status"
-        app:layout_constraintVertical_bias="0.2">
-
+        app:layout_constraintTop_toBottomOf="@+id/multiport_button_start"
+        >
     </ScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

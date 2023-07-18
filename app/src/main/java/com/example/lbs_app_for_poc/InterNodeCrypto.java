@@ -9,6 +9,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.Key;
@@ -25,6 +26,7 @@ import java.util.Objects;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
+import javax.crypto.ExemptionMechanismException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
@@ -43,7 +45,8 @@ $ openssl x509 -req -in node.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out n
 public class InterNodeCrypto {
 
     public static File absolute_path;
-
+    public static long NTP_TIME_OFFSET = 0; // NTP_SERVER_TIME - OLD_SYSTEM_TIME (we want to sync without changing the system time)
+    public static final int TIMESTAMP_BYTES = 8; // We need 8 bytes for a timestamp
     // The following filenames are set to be the standard ones that we will use that's why they are final.
     public static final String my_key_path = "my.key";
     public static final String my_cert_path = "my.crt";
@@ -60,7 +63,7 @@ public class InterNodeCrypto {
                                                   // TODO: Ideally implement with both X509 for the case of standard compliance and future development AND
                                                   //  with a smaller version of a certificate with less data to communicate between nodes when communicating
     public static X509Certificate CA_cert = null;
-    public static X509Certificate peer_cert = null;
+    // public static X509Certificate peer_cert = null; // The certificate now will be kept in TCPserverThread and ConnectivityConfiguration
 
     private static void copyFile(File source, File destFile){
 
@@ -120,11 +123,13 @@ public class InterNodeCrypto {
 
     }
 
+    /*
     public static void save_peer_cert(byte [] s) throws CertificateException {
         CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
         peer_cert = (X509Certificate) certificateFactory.generateCertificate(new ByteArrayInputStream(s));
         return;
     }
+    */
 
     public static X509Certificate CertFromByteArray(byte [] s) throws CertificateException {
         CertificateFactory certificateFactory = CertificateFactory.getInstance(CertificateStandard);
@@ -227,7 +232,7 @@ public class InterNodeCrypto {
         return result;
     }
 
-    public static byte [] encryptWithPeerKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    public static byte [] encryptWithPeerKey(byte [] input, X509Certificate peer_cert) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
 
         // RSA-OAEP / SHA-256 hashing / MGF1 mask generation
         // PKCS#1 v2.1 (RSA Cryptography Standard) by RSA Laboratories
@@ -287,6 +292,35 @@ public class InterNodeCrypto {
         }
 
         return dec_data;
+    }
+
+    public static CryptoTimestamp getSignedTimestamp() throws NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
+        CryptoTimestamp answer = new CryptoTimestamp();
+        try {
+            long timestamp = System.currentTimeMillis() + NTP_TIME_OFFSET; // We want to use the NTP time
+            byte [] timestampBytes = ByteBuffer.allocate(Long.BYTES).putLong(timestamp).array();
+            answer.timestamp = timestampBytes;
+            answer.signed_timestamp = signPrivateKeyByteArray(timestampBytes);
+            return answer;
+        }
+        catch (Exception e){
+            Log.d("Timestamp Signing","Could not sign the timestamp byte array!");
+            throw e;
+        }
+    }
+    public static boolean isTimestampFresh(byte [] timestamp){
+        long currentTime = System.currentTimeMillis() + NTP_TIME_OFFSET; // NTP time
+        long timestampValue = ByteBuffer.wrap(timestamp).getLong();
+
+        // this should be impossible
+        if( currentTime < timestampValue ){
+            return false;
+        }
+
+        long difference = currentTime - timestampValue;
+        long freshnessThreshold = 2500; // 2.5 seconds in milliseconds (this can be reduced/increased dynamically based on connection confidence in the future)
+
+        return difference <= freshnessThreshold;
     }
 
     public static byte [] signPrivateKeyByteArray(byte [] input) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, SignatureException {

@@ -15,6 +15,12 @@ import androidx.navigation.fragment.NavHostFragment;
 
 import com.example.lbs_app_for_poc.databinding.FragmentFirstBinding;
 
+import java.nio.ByteBuffer;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.SignatureException;
+
 import javax.crypto.Cipher;
 
 public class FirstFragment extends Fragment {
@@ -38,27 +44,35 @@ public class FirstFragment extends Fragment {
 
         CredsNoticeGiven = false;
 
+        // running the NTP synchronization task
+        NtpSyncTask ntpSyncTask = new NtpSyncTask();
+        ntpSyncTask.execute();
+
         Button check_algo_button = view.findViewById(R.id.check_algo);
         check_algo_button.setOnClickListener(
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        try{
-                            Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
-                            Toast.makeText(getContext(), "YES!!!!", Toast.LENGTH_SHORT).show();
-                            Log.d("CATCH","SUCCESS: algorithm exists!");
-                        }
-                        catch (Exception e){
-                            e.printStackTrace();
-                            Log.d("CATCH","UNLUCKY: The algoritm doesn't exist!");
-                            Toast.makeText(getContext(), "NOxxxxx", Toast.LENGTH_SHORT).show();
+                        try {
+                            CryptoTimestamp ct = InterNodeCrypto.getSignedTimestamp();
+                            long value = ByteBuffer.wrap(ct.timestamp).getLong();
+                            check_algo_button.setText(String.valueOf(value));
+                            // Toast.makeText(getContext(), "Timestamp: " + value, Toast.LENGTH_SHORT).show();
+                        } catch (NoSuchAlgorithmException e) {
+                            throw new RuntimeException(e);
+                        } catch (SignatureException e) {
+                            throw new RuntimeException(e);
+                        } catch (NoSuchProviderException e) {
+                            throw new RuntimeException(e);
+                        } catch (InvalidKeyException e) {
+                            throw new RuntimeException(e);
                         }
                     }
                 }
         );
-        check_algo_button.setEnabled(false);
-        check_algo_button.setVisibility(View.INVISIBLE);
-        check_algo_button.setClickable(false);
+        // check_algo_button.setEnabled(false);
+        // check_algo_button.setVisibility(View.INVISIBLE);
+        // check_algo_button.setClickable(false);
 
         Button search_initiator_button = view.findViewById(R.id.button_first);
         search_initiator_button.setText("Search Initiator Node");
