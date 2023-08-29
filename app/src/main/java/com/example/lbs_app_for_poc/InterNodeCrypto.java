@@ -22,6 +22,7 @@ import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
+import java.util.ArrayList;
 import java.util.Objects;
 
 import javax.crypto.BadPaddingException;
@@ -31,22 +32,12 @@ import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
 /*
-TODO: Make the certificate generation into a bash script so that the user can test PoC.
-This class will contain all the cryptography functions that we need to establish secure communication between the nodes of the scheme.
-We have used OpenSSL to generate the credentials and ECDSA is the crypto-system that was selected.
-The process to create the credentials and certificates was the following:
-1) The CA's certificate/key were generated with the following command:
-$ openssl req -x509 -newkey ec:<(openssl ecparam -name prime256v1) -keyout ca.key -out ca.crt -days 365 -nodes
-2) The certificates/creds for the nodes were generated as follows:
-$ openssl ecparam -name prime256v1 -genkey -noout -out node.key
-$ openssl req -new -key node.key -out node.csr
-$ openssl x509 -req -in node.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out node.crt -days 365
+Generating pseudonymous certificates:
+
  */
 public class InterNodeCrypto {
 
     public static File absolute_path;
-    public static long NTP_TIME_OFFSET = 0; // NTP_SERVER_TIME - OLD_SYSTEM_TIME (we want to sync without changing the system time)
-    public static final int TIMESTAMP_BYTES = 8; // We need 8 bytes for a timestamp
     // The following filenames are set to be the standard ones that we will use that's why they are final.
     public static final String my_key_path = "my.key";
     public static final String my_cert_path = "my.crt";
@@ -55,14 +46,22 @@ public class InterNodeCrypto {
     // private static final String curveName = "prime256v1";
     private static final String provider_name = "BC";
     private static final String CertificateStandard = "X509";
+    public static final int MAX_NUMBER_OF_PSEUDONYMOUS_CERTS = 4;
 
     // The keys "once loaded" are static because we don't want to have a specific instance of the class
     // but rather just use the class overall to do all the crypto that we need.
-    public static PrivateKey my_key = null;
-    public static X509Certificate my_cert = null; // TODO: Don't use X509 But rather use a customized certificate class
-                                                  // TODO: Ideally implement with both X509 for the case of standard compliance and future development AND
-                                                  //  with a smaller version of a certificate with less data to communicate between nodes when communicating
-    public static X509Certificate CA_cert = null;
+
+    // NEW VERSION VARIABLES (where we don't save the credentials but instead download them every time)
+    public static long NTP_TIME_OFFSET = 0; // NTP_SERVER_TIME - OLD_SYSTEM_TIME (we want to sync without changing the system time)
+    public static final int TIMESTAMP_BYTES = 8; // We need 8 bytes for a timestamp
+
+    public static PrivateKey my_key = null; // Only 1 private key
+    public static X509Certificate my_cert = null; // Only 1 main certificate
+    public static X509Certificate CA_cert = null; // Only 1 CA certificate
+
+    public static ArrayList<X509Certificate> pseudonymous_certificates = null; // Multiple pseudonymous certificates
+    public static ArrayList<PrivateKey> pseudonymous_privates = null;
+
     // public static X509Certificate peer_cert = null; // The certificate now will be kept in TCPserverThread and ConnectivityConfiguration
 
     private static void copyFile(File source, File destFile){
@@ -243,6 +242,7 @@ public class InterNodeCrypto {
 
         // Determine the maximum block size for encryption
         int blockSize = cipher.getBlockSize();
+        Log.d("RSA_encyption_block_size","size = " + blockSize);
 
         // Calculate the size of the output array
         int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);

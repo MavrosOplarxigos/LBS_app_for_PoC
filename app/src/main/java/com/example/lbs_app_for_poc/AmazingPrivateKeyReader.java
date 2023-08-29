@@ -137,6 +137,65 @@ public class AmazingPrivateKeyReader {
 
     }
 
+    // PEM key parser from byte array
+    public static RSAPrivateKey myPEMparser(byte [] key_bytes) throws IOException {
+
+        RSAPrivateKey rsa_key = null;
+
+        // try without removing any bytes from the file (aka with the header and tail of the key included)
+        try{
+            Log.d("myPEMparser","Trying to parse key file unchanged!");
+            rsa_key = callingKeyFactory(key_bytes);
+            Log.d("myPEMparser","SUCCESSFULLY: parsed the key as is!");
+            return rsa_key;
+        }
+        catch (Exception e){
+            Log.d("myPEMparser","FAILURE: The key file can't be parsed without any changes!");
+            e.printStackTrace();
+        }
+
+        Log.d("myPEMparser","OK we will try removing header and tail and then parse the key!");
+
+        // removing the header and tail
+        String key_string = new String(key_bytes, StandardCharsets.UTF_8);
+        key_string = key_string.replace("-----BEGIN PRIVATE KEY-----\n", "");
+        key_string = key_string.replace("-----END PRIVATE KEY-----", "");
+
+        // encoding to base 64
+        byte [] encoded64 = Base64.decode(key_string,Base64.DEFAULT);
+
+        // trying to see if the key is parsed this way
+        try{
+            Log.d("myPEMparser","Trying to parse key file encoded to base 64 and headers removed!");
+            rsa_key = callingKeyFactory(encoded64);
+            Log.d("myPEMparser","SUCCESSFULLY: parsed the key with encoding to base 64!");
+            return rsa_key;
+        }
+        catch (Exception e){
+            Log.d("myPEMparser","FAILURE: The key file can't be parsed after encoded to base 64!");
+            e.printStackTrace();
+        }
+
+        // effort too pass the key without encoding to base 64 but rather just removing the headers
+        byte [] plain_key_bytes = key_string.getBytes();
+
+        // trying to see if the key is parsed this way
+        try{
+            Log.d("myPEMparser","Trying to parse key file only with headers removed!");
+            rsa_key = callingKeyFactory(encoded64);
+            Log.d("myPEMparser","SUCCESSFULLY: parsed the key only with headers removed!");
+            return rsa_key;
+        }
+        catch (Exception e){
+            Log.d("myPEMparser","FAILURE: The key file can't be parsed with just the headers revoved!");
+            e.printStackTrace();
+        }
+
+        // maybe try with PEM reader?
+        return null;
+
+    }
+
     public static RSAPrivateKey callingKeyFactory(byte [] key_bytes) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, NoSuchProviderException, KeyStoreException, CertificateException {
         PrivateKey privateKey = null;
         try{
