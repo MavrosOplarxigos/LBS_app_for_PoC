@@ -25,14 +25,24 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.SignatureException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
+
+import javax.crypto.BadPaddingException;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 
 public class LBSEntitiesConnectivity implements Serializable {
 
     private static final String FILE_PATH = "LBSEntitiesConnectivity.ser";
+    public static File absolute_path;
 
     // STANDARD VARIABLES
     public static final int ENTITIES_MANAGER_PORT = 55444; // Hardcoded the PORT number for the entities manager
@@ -43,10 +53,10 @@ public class LBSEntitiesConnectivity implements Serializable {
     public String MY_REAL_NODE_NAME; // The real name of the Node
 
     // VARIABLES TO FILL AFTER CONTACTING THE ENTITIES MANAGER SERVER
-    public int P2P_RELAY_QUERY_PORT;
-    public int P2P_RELAY_AVAILABILITY_PORT;
-    public int SIGNING_FWD_SERVER_PORT;
-    public boolean entitiesOnline;
+    transient public int P2P_RELAY_QUERY_PORT;
+    transient public int P2P_RELAY_AVAILABILITY_PORT;
+    transient public int SIGNING_FWD_SERVER_PORT;
+    transient public boolean entitiesOnline;
 
     // certificates retrieved by the CA:
 
@@ -55,12 +65,12 @@ public class LBSEntitiesConnectivity implements Serializable {
     // The pseudonyms which will be used in rotation as the certificate for InterNodeCrypto
 
     // variables to control inter class communication fragment - thread classes
-    public Activity activity;
-    public FirstFragment fragment;
+    transient public Activity activity;
+    transient public FirstFragment fragment;
 
     // thread classes for INFO, CRDS messages
-    public ConnectivityEstablish establish;
-    public CredsDownloading credsDownloading;
+    transient public ConnectivityEstablish establish;
+    transient public CredsDownloading credsDownloading;
 
     public LBSEntitiesConnectivity(Activity activity, FirstFragment fragment){
         establish = new ConnectivityEstablish();
@@ -97,7 +107,8 @@ public class LBSEntitiesConnectivity implements Serializable {
     }
     public void writeObjectFile(){
         try {
-            FileOutputStream fos = new FileOutputStream(FILE_PATH);
+            File fa = new File(absolute_path,FILE_PATH);
+            FileOutputStream fos = new FileOutputStream(fa);
             ObjectOutputStream oos = new ObjectOutputStream(fos);
             oos.writeObject(this);
             oos.close();
@@ -114,7 +125,7 @@ public class LBSEntitiesConnectivity implements Serializable {
     }
 
     // Thread for the INFO message exchange
-    public class ConnectivityEstablish extends Thread{
+    public class ConnectivityEstablish extends Thread implements Serializable{
 
         public ConnectivityEstablish(){
         }
@@ -299,7 +310,7 @@ public class LBSEntitiesConnectivity implements Serializable {
     }
 
     // Thread for the CRDS message
-    public class CredsDownloading extends Thread{
+    public class CredsDownloading extends Thread implements Serializable{
 
         public CredsDownloading(){
         }
@@ -505,7 +516,24 @@ public class LBSEntitiesConnectivity implements Serializable {
                     InterNodeCrypto.pseudonymous_privates.add(Ppkey);
                 }
 
-                // TODO: 1) implement checks on all the credentials received to see if they are valid if not Toast
+                // DONE: implement checks on all the credentials received to see if they are valid if not Toast
+                if( !InterNodeCrypto.checkMyCreds() ){
+                    Log.d("LBS entities connectivity","Invalid main credentials!");
+                    Drawable failureDrawable = ContextCompat.getDrawable(activity, R.drawable.error);
+                    LBSEntitiesConnectivity.this.fragment.Credentials_Loaded_STATUS_IV.setImageDrawable(failureDrawable);
+                    Toast.makeText(LBSEntitiesConnectivity.this.fragment.getActivity(), "Main certificates invalid", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                for(int i=0;i<InterNodeCrypto.pseudonymous_privates.size();i++){
+                    if( !InterNodeCrypto.checkCreds( InterNodeCrypto.CA_cert, InterNodeCrypto.pseudonymous_certificates.get(i), InterNodeCrypto.pseudonymous_privates.get(i) ) ){
+                        Log.d("LBS entities connectivity","Pseudo credentials #" + i + " not valid!");
+                        Drawable failureDrawable = ContextCompat.getDrawable(activity, R.drawable.error);
+                        LBSEntitiesConnectivity.this.fragment.Credentials_Loaded_STATUS_IV.setImageDrawable(failureDrawable);
+                        Toast.makeText(LBSEntitiesConnectivity.this.fragment.getActivity(), "Pseudo Credentials #" + i + " invalid!", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                }
+                Log.d("LBS entities connectivity","SUCCESS: All credentials received and validity checked!");
 
                 // If we reached this point it means we have received all the credentials
                 LBSEntitiesConnectivity.this.activity.runOnUiThread(
@@ -514,20 +542,28 @@ public class LBSEntitiesConnectivity implements Serializable {
                             public void run() {
                                 Drawable successDrawable = ContextCompat.getDrawable(activity, R.drawable.tick);
                                 LBSEntitiesConnectivity.this.fragment.Credentials_Loaded_STATUS_IV.setImageDrawable(successDrawable);
-                                // TODO: 2) Enable the USE LBS key make sure that what it saves is only the IP and the name of the node not the creds
-
+                                LBSEntitiesConnectivity.this.fragment.search_initiator_button.setClickable(true);
+                                LBSEntitiesConnectivity.this.fragment.search_initiator_button.setEnabled(true);
                             }
                         }
                 );
 
-
-
-            }catch (IOException e) {
-                throw new RuntimeException(e);
-            } catch (CertificateException e) {
-                throw new RuntimeException(e);
+            }catch (Exception e) {
+                e.printStackTrace();
+                tryagain();
             }
 
+        }
+
+        void tryagain(){
+            LBSEntitiesConnectivity.this.activity.runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(LBSEntitiesConnectivity.this.fragment.getActivity(), "Error: Try again!", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+            );
         }
 
         public byte[] intToByteArray(int number) {
@@ -548,13 +584,22 @@ public class LBSEntitiesConnectivity implements Serializable {
             while(true){
                 int BytesLeft2Read = numOfBytes - totalBytesRead;
                 int bufferSize = Math.min(100,BytesLeft2Read); // We read at most 100 bytes every time
+                if (bufferSize != 100) {
+                    Log.d("BuffRead", "Size now is " + bufferSize + " and BytesLeft2Read = " + BytesLeft2Read + " out of " + numOfBytes );
+                }
                 byte [] buffer = new byte[bufferSize];
                 int tempBytesRead = dis.read(buffer);
                 if(tempBytesRead!=bufferSize) {
-                    throw new RuntimeException();
+                    if( tempBytesRead < bufferSize ){
+                        // If they are less maybe we are still to receive them
+                        Log.d("BuffRed","WARNING: We read less than what we expected!");
+                    }
+                    else {
+                        throw new RuntimeException();
+                    }
                 }
                 totalBytesRead += tempBytesRead;
-                baos.write(buffer);
+                baos.write(buffer,0,tempBytesRead);
                 if(totalBytesRead == numOfBytes){
                     break;
                 }

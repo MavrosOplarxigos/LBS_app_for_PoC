@@ -27,6 +27,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SignatureException;
+import java.util.ArrayList;
 import java.util.regex.Pattern;
 
 import javax.crypto.Cipher;
@@ -41,13 +42,13 @@ public class FirstFragment extends Fragment {
     public static String Remote_Services_Online_STATUS_String; // Online, Connecting, Offline
     public ImageView Credentials_Loaded_STATUS_IV;
     public static String Credentials_Loaded_STATUS_String;
+    public Button search_initiator_button;
     public static final Pattern ipAddressPattern = Pattern.compile("^([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
             "([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
             "([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
             "([01]?\\d\\d?|2[0-4]\\d|25[0-5])$");
 
     public Thread connThread = null;
-
 
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
@@ -72,7 +73,7 @@ public class FirstFragment extends Fragment {
         ntpSyncTask.execute();
 
         // Button for using the LBS after the configuration is done!
-        Button search_initiator_button = view.findViewById(R.id.button_first);
+        search_initiator_button = view.findViewById(R.id.button_first);
         search_initiator_button.setText("USE LBS");
         search_initiator_button.setEnabled(false);
         search_initiator_button.setClickable(false);
@@ -80,11 +81,27 @@ public class FirstFragment extends Fragment {
             @Override
             public void onClick(View view) {
 
-                lbsEC.writeObjectFile(); // We save the current configuration for later usages of the application
+                try {
+                    lbsEC.writeObjectFile(); // We save the current configuration for later usages of the application
+                }
+                catch (Exception e){
+                    e.printStackTrace();
+                    Toast.makeText(getActivity(),"Error saving the configuration! Try again!",Toast.LENGTH_SHORT);
+                    return;
+                }
                 // NOTE: if the above blocks run it in a thread although highly unlikely since we are just saving 2 small strings essentially
 
-                // TODO: 3) Start a thread for disclosing our IP address and port for accepting incoming connections to the P2P AVAILABILITY every 30 seconds
+                // choose random serving port between 56000 - 57000
+                TCPServerThread.initServingPort();
+
+                // DONE: Start a thread for disclosing our IP address and port which is for accepting incoming connections from other nodes to the P2P AVAILABILITY every 30 seconds
+                // run the thread for disclosing the port and ip address to the P2P relay server
+                P2PRelayServerInteractions.at = new P2PRelayServerInteractions.AvailabilityThread(lbsEC);
+                P2PRelayServerInteractions.at.start();
+
                 // TODO: 4) Implement a Log Fragment in which the various threads are going to be adding logs add button to search fragment
+                LoggingFragment.tvdAL = new ArrayList<LoggingFragment.TextViewDetails>();
+
                 // TODO: 5) Implement Thread for AVAILABILITY disclosure (yellow color)
                 // TODO: 6) Thread for PEER DISCOVERY (which runs once our records are either not fresh, non-existent or non repsonsive 1 time)
                 // TODO: 7) Thread for SERVING peers that communicate their requests to us
@@ -93,6 +110,7 @@ public class FirstFragment extends Fragment {
                 // going to the map fragment
                 NavHostFragment.findNavController(FirstFragment.this)
                         .navigate(R.id.action_FirstFragment_to_SecondFragment);
+
             }
         });
 

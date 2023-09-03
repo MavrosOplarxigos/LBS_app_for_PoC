@@ -219,17 +219,17 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        binding.buttonSecond.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                NavHostFragment.findNavController(SearchingNodeFragment.this)
-                        .navigate(R.id.action_SecondFragment_to_FirstFragment);
-            }
-        });
+        Button LogsButton = view.findViewById(R.id.buttonToLog);
+        LogsButton.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        NavHostFragment.findNavController(SearchingNodeFragment.this)
+                                .navigate(R.id.action_SecondFragment_to_loggingFragment);
+                    }
+                }
+        );
 
-        Button back_button = view.findViewById(R.id.button_second);
-        back_button.setVisibility(View.INVISIBLE);
-        back_button.setActivated(false);
 
         // allowing for HTTPS connections
         network_permit();

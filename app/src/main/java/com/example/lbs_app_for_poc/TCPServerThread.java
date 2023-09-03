@@ -25,6 +25,7 @@ import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.util.Random;
 import java.util.regex.Pattern;
 
 import javax.crypto.BadPaddingException;
@@ -36,6 +37,7 @@ public class TCPServerThread extends Thread{
     public ServerSocket serverSocket;
     private Handler uiHandler;
     public static final char transmission_del = '|';
+    public static int MyServingPort;
     public static final int max_transmission_cutoff = 300000; // 301K bytes per message exchange
     public X509Certificate current_peer_cert; // the current peer of the connection every time
     public String current_peer_id;
@@ -43,6 +45,13 @@ public class TCPServerThread extends Thread{
     public TCPServerThread(ServerSocket s,Handler uiHandler){
         serverSocket = s;
         this.uiHandler = uiHandler;
+    }
+
+    public static void initServingPort(){
+        int MIN_PORT = 56000;
+        int MAX_PORT = 58000;
+        Random random = new Random();
+        TCPServerThread.MyServingPort = random.nextInt(MAX_PORT - MIN_PORT + 1) + MIN_PORT;
     }
 
     public void run(){

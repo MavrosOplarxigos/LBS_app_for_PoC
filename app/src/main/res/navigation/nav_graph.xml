@@ -24,6 +24,9 @@
         <action
             android:id="@+id/action_SecondFragment_to_FirstFragment"
             app:destination="@id/FirstFragment" />
+        <action
+            android:id="@+id/action_SecondFragment_to_loggingFragment"
+            app:destination="@id/loggingFragment" />
     </fragment>
     <fragment
         android:id="@+id/connectivityConfiguration"
@@ -40,4 +43,13 @@
         android:name="com.example.lbs_app_for_poc.CredentialsSelection"
         android:label="fragment_credentials_selection"
         tools:layout="@layout/fragment_credentials_selection" />
+    <fragment
+        android:id="@+id/loggingFragment"
+        android:name="com.example.lbs_app_for_poc.LoggingFragment"
+        android:label="fragment_logging"
+        tools:layout="@layout/fragment_logging" >
+        <action
+            android:id="@+id/action_loggingFragment_to_SecondFragment"
+            app:destination="@id/SecondFragment" />
+    </fragment>
 </navigation>

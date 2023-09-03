@@ -83,6 +83,7 @@ public class MainActivity extends AppCompatActivity {
 
         // We communicate the Files directory to the crypto class so that the credentials can be loaded from their respective paths
         InterNodeCrypto.absolute_path = getFilesDir();
+        LBSEntitiesConnectivity.absolute_path = getFilesDir();
         Log.d("MAIN_ACTIVITY_INIT","The file directory is "+InterNodeCrypto.absolute_path);
 
         if (!Environment.isExternalStorageManager()){
