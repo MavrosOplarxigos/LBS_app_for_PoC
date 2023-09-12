@@ -26,12 +26,75 @@ import javax.crypto.NoSuchPaddingException;
 
 public class P2PRelayServerInteractions {
 
-    public static AvailabilityThread at;
+    public static AvailabilityThread aThread;
+    public static PeerDiscoveryThread qThread;
+
+    public static class PeerDiscoveryThread extends Thread{
+
+        LBSEntitiesConnectivity lbsEntitiesConnectivity;
+        public static final int QUERY_INTERVAL_MSEC = 20 * 1000;
+        public static final int QUERY_SOCKET_TIMEOUT = 1000;
+        public static boolean explicit_search_request;
+
+        public PeerDiscoveryThread(LBSEntitiesConnectivity lbsEC){
+            this.lbsEntitiesConnectivity = lbsEC;
+            this.explicit_search_request = false;
+        }
+
+        @Override
+        public void run() {
+            while(true){
+                try {
+                    if(explicit_search_request){
+                        Log.d("Peer Discovery Thread (Old): ", "Successful stop by searching node fragment!");
+                        return;
+                    }
+                    Log.d("Peer Discovery Thread: ", "Thread initiated");
+                    Socket PeerDiscoverySocket = new Socket();
+                    Log.d("Peer Discovery Thread: ", "Socket constructed");
+                    PeerDiscoverySocket.connect(new InetSocketAddress(lbsEntitiesConnectivity.ENTITIES_MANAGER_IP, lbsEntitiesConnectivity.P2P_RELAY_QUERY_PORT), QUERY_SOCKET_TIMEOUT);
+                    Log.d("Peer Discovery Thread: ", "Socket constructed");
+                    while(true){
+                        if(explicit_search_request){
+                            Log.d("Peer Discovery Thread (Old): ", "Successful stop by searching node fragment!");
+                            return;
+                        }
+                        client_hello(PeerDiscoverySocket);
+                        Log.d("Peer Discovery Thread","Sent Client Hello");
+                        // now we can receive the peer list [ [num of records] [ IP_1 , port_1 ] .. [ IP_1 , port_1 ] ]
+                        // TODO: implement mutex here so that we don't write on the list when it is read
+                        // SearchingNodeFragment.ServingPeerArrayList = peer_list(PeerDiscoverySocket);
+                        Log.d("Peer Discovery Thread: ", "Received Peer List: ");
+                        for(int i=0;i<SearchingNodeFragment.ServingPeerArrayList.size();i++){
+                            Log.d("Peer Discovery Thread: ","Peer #" + i + " @ " + SearchingNodeFragment.ServingPeerArrayList.get(i).PeerIP + ":" + SearchingNodeFragment.ServingPeerArrayList.get(i).PeerPort );
+                        }
+                        // TODO: Add this to the log fragment as well
+                        Thread.sleep(QUERY_INTERVAL_MSEC);
+                        PeerDiscoverySocket.close();
+                        PeerDiscoverySocket = new Socket();
+                        PeerDiscoverySocket.connect(new InetSocketAddress(lbsEntitiesConnectivity.ENTITIES_MANAGER_IP, lbsEntitiesConnectivity.P2P_RELAY_QUERY_PORT), QUERY_SOCKET_TIMEOUT);
+                    }
+                }
+                catch (Exception e){
+                    Log.d("Peer discovery: ","Could not retrieve new peers!");
+                    // maybe for some reason the server is flooded so we will wait some time before reconnecting to it
+                    try{
+                        Thread.sleep(QUERY_INTERVAL_MSEC);
+                    }
+                    catch (InterruptedException ex){
+                        ex.printStackTrace();
+                    }
+                    e.printStackTrace();
+                }
+            }
+        }
+
+    }
 
     public static class AvailabilityThread extends Thread{
 
         LBSEntitiesConnectivity lbsEC;
-        public static final int AVAILABILITY_DISCLOSURE_INTERVAL_MSEC = 5 * 1000; // 30000;
+        public static final int AVAILABILITY_DISCLOSURE_INTERVAL_MSEC = 20 * 1000;
         public static final int AVAILABILITY_SOCKET_TIMEOUT = 1000;
 
         public AvailabilityThread(LBSEntitiesConnectivity lbsEC){
@@ -47,13 +110,12 @@ public class P2PRelayServerInteractions {
                     AvailabilitySocket.connect(new InetSocketAddress(lbsEC.ENTITIES_MANAGER_IP, lbsEC.P2P_RELAY_AVAILABILITY_PORT), AVAILABILITY_SOCKET_TIMEOUT);
                     Log.d("Availability Thread: ", "Socket connected!");
                     while (true) {
-                        // reason: send our certificate to the remote server and double safety against timing attacks
                         client_hello(AvailabilitySocket);
                         Log.d("Availability Thread: ", "Sent Client Hello");
                         // now we can send the availability
-                        send_availability(AvailabilitySocket);
+                        String disclosure = send_availability(AvailabilitySocket);
                         Log.d("Availability Thread: ", "Sent Client Availability");
-                        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Disclosed service to LBS manager.", Color.BLUE));
+                        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("AVAILABILITY DISCLOSURE " + disclosure, Color.BLUE));
                         Thread.sleep(AVAILABILITY_DISCLOSURE_INTERVAL_MSEC); // Wait for 30 seconds
                         AvailabilitySocket.close();
                         AvailabilitySocket = new Socket();
@@ -63,7 +125,7 @@ public class P2PRelayServerInteractions {
                     Log.d("Availability Thread: ", "Socket could NOT CONNECT!");
                     // maybe for some reason the server is flooded so we will wait some time before reconnecting to it
                     try {
-                        Thread.sleep(AVAILABILITY_DISCLOSURE_INTERVAL_MSEC); // Wait for 30 seconds
+                        Thread.sleep(AVAILABILITY_DISCLOSURE_INTERVAL_MSEC);
                     } catch (InterruptedException ex) {
                         ex.printStackTrace();
                     }
@@ -97,7 +159,7 @@ public class P2PRelayServerInteractions {
 
     }
 
-    public static void send_availability(Socket socket) throws IOException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException {
+    public static String send_availability(Socket socket) throws IOException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException {
 
         DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
 
@@ -145,7 +207,7 @@ public class P2PRelayServerInteractions {
         byte [] ClientAvailability = baosClientAvailability.toByteArray();
 
         dos.write(ClientAvailability);
-        return;
+        return  myIpAddress.getHostAddress() + ":" + TCPServerThread.MyServingPort;
 
     }
 

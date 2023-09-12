@@ -57,12 +57,14 @@ import java.io.InputStreamReader;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.HttpURLConnection;
+import java.net.InetAddress;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SignatureException;
+import java.util.ArrayList;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
@@ -79,6 +81,31 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     private EditText search_keyword_input;
     public GeoJsonLayer results_layer = null;
     private MapSearchItem msi; // The fundamental object that defines the search as soon as the search button is pressed
+
+    // updated by the PEER DISCOVERY Thread (aka QUERY Thread on P2P side) which runs in the background
+    // if for some reason all the peers we were given are inactive we query the signing server directly
+    public static ArrayList<ServingPeer> ServingPeerArrayList;
+    public static LBSEntitiesConnectivity lbsEC4PeerDiscRestart;
+
+    public class ServingPeer{
+        // public String DistinguishedName; I don't know the name. I expect only the IP and Port to be of a SOME peer.
+        public InetAddress PeerIP;
+        public int PeerPort;
+        public boolean faulty; // it either doesn't respond or it returns gibberish
+        public ServingPeer(InetAddress IP, int Port){
+            // DistinguishedName = DN; I don't know the name. I expect only the IP and Port to be of a SOME peer.
+            PeerIP = IP;
+            PeerPort = Port;
+            faulty = false;
+        }
+    }
+
+    // We call the following function IFF AND WHEN all of the peers in the ServingPeerArrayList are non-responsive
+    public static void P2PThreadExplicitRestart(){
+        P2PRelayServerInteractions.qThread.explicit_search_request = true; // setting this true so the previous instance will kill itself
+        P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC4PeerDiscRestart);
+        P2PRelayServerInteractions.qThread.start();
+    }
 
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {

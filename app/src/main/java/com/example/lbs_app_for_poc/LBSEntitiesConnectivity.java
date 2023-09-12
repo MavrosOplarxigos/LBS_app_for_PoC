@@ -1,8 +1,10 @@
 package com.example.lbs_app_for_poc;
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
 import android.util.Log;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import androidx.core.content.ContextCompat;
@@ -141,6 +143,7 @@ public class LBSEntitiesConnectivity implements Serializable {
                         public void run() {
                             Drawable loadingDrawable = ContextCompat.getDrawable(activity, R.drawable.loading_as_drawable);
                             LBSEntitiesConnectivity.this.fragment.Remote_Services_Online_STATUS_IV.setImageDrawable(loadingDrawable);
+                            LBSEntitiesConnectivity.this.fragment.startLoadingAnimation("services");
                         }
                     }
             );
@@ -325,6 +328,7 @@ public class LBSEntitiesConnectivity implements Serializable {
                         public void run() {
                             Drawable loadingDrawable = ContextCompat.getDrawable(activity, R.drawable.loading_as_drawable);
                             LBSEntitiesConnectivity.this.fragment.Credentials_Loaded_STATUS_IV.setImageDrawable(loadingDrawable);
+                            LBSEntitiesConnectivity.this.fragment.startLoadingAnimation("credentials");
                         }
                     }
             );

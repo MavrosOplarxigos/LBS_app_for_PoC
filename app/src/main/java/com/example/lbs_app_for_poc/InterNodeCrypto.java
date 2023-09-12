@@ -20,9 +20,12 @@ import java.security.Signature;
 import java.security.SignatureException;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
+import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Objects;
 
 import javax.crypto.BadPaddingException;
@@ -59,6 +62,8 @@ public class InterNodeCrypto {
     public static X509Certificate my_cert = null; // Only 1 main certificate
     public static X509Certificate CA_cert = null; // Only 1 CA certificate
 
+    // The node is using these pseudo creds to query not to serve.
+    // For serving I can use my real certificate since I have nothing to hide.
     public static ArrayList<X509Certificate> pseudonymous_certificates = null; // Multiple pseudonymous certificates
     public static ArrayList<PrivateKey> pseudonymous_privates = null;
 
@@ -382,6 +387,22 @@ public class InterNodeCrypto {
             Log.d("CRED DETAILS","Successfully retrieved Subject DN");
             return "Subject: " + certificate.getSubjectDN().toString() + '\n' + "Algorithm: " + certificate.getPublicKey().getAlgorithm();
         }
+    }
+
+    public static String getCommonName(X509Certificate certificate){
+        String DN = certificate.getSubjectDN().getName();
+        return getCommonName(DN);
+    }
+
+    public static String getCommonName(String DN){
+        String[] dnComponents = DN.split(",");
+        for (String dnComponent : dnComponents) {
+            if (dnComponent.trim().startsWith("CN=")) {
+                // Extract and return the CN value
+                return dnComponent.trim().substring(3);
+            }
+        }
+        return "None!";
     }
 
 }

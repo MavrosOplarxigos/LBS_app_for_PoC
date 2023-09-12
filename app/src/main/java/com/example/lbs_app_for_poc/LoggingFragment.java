@@ -19,6 +19,8 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import org.w3c.dom.Text;
+
 import java.util.ArrayList;
 
 public class LoggingFragment extends Fragment {
@@ -71,7 +73,7 @@ public class LoggingFragment extends Fragment {
 
                         prev++;
                     }
-                    Log.d("LiveUpdateThread","new prev = " + prev);
+                    //Log.d("LiveUpdateThread","new prev = " + prev);
                     if(stopLiveUpdate){
                         break;
                     }
@@ -94,6 +96,10 @@ public class LoggingFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+
+        TextView tvLT = view.findViewById(R.id.LoggingTitle);
+        tvLT.setText("LOG: " + InterNodeCrypto.getCommonName(InterNodeCrypto.my_cert) );
+
         stopLiveUpdate = false;
         MainLogSV = (ScrollView) view.findViewById(R.id.MainLogSV);
         // add the linear layout if it is not already added

@@ -1,5 +1,7 @@
 package com.example.lbs_app_for_poc;
 import android.graphics.Color;
+import android.graphics.drawable.AnimatedImageDrawable;
+import android.graphics.drawable.AnimationDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.text.Editable;
@@ -32,6 +34,7 @@ import java.util.regex.Pattern;
 
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class FirstFragment extends Fragment {
 
@@ -43,6 +46,9 @@ public class FirstFragment extends Fragment {
     public ImageView Credentials_Loaded_STATUS_IV;
     public static String Credentials_Loaded_STATUS_String;
     public Button search_initiator_button;
+    public EditText LBSemIP_ET;
+    public EditText LBSemNAME_ET;
+
     public static final Pattern ipAddressPattern = Pattern.compile("^([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
             "([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
             "([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
@@ -54,6 +60,11 @@ public class FirstFragment extends Fragment {
     public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
         binding = FragmentFirstBinding.inflate(inflater, container, false);
         return binding.getRoot();
+    }
+
+    public void autofillDebug(){
+        this.LBSemIP_ET.setText("192.168.10.123");
+        this.LBSemNAME_ET.setText("nodeA");
     }
 
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
@@ -91,19 +102,24 @@ public class FirstFragment extends Fragment {
                 }
                 // NOTE: if the above blocks run it in a thread although highly unlikely since we are just saving 2 small strings essentially
 
+                // DONE: Implement a Log Fragment in which the various threads are going to be adding logs add button to search fragment
+                LoggingFragment.tvdAL = new ArrayList<LoggingFragment.TextViewDetails>();
+
                 // choose random serving port between 56000 - 57000
                 TCPServerThread.initServingPort();
 
-                // DONE: Start a thread for disclosing our IP address and port which is for accepting incoming connections from other nodes to the P2P AVAILABILITY every 30 seconds
-                // run the thread for disclosing the port and ip address to the P2P relay server
-                P2PRelayServerInteractions.at = new P2PRelayServerInteractions.AvailabilityThread(lbsEC);
-                P2PRelayServerInteractions.at.start();
+                // DONE: Start a thread for disclosing our IP address and port which is for accepting incoming connections from querying nodes
+                // to the P2P AVAILABILITY server in a constant time interval
+                P2PRelayServerInteractions.aThread = new P2PRelayServerInteractions.AvailabilityThread(lbsEC);
+                P2PRelayServerInteractions.aThread.start();
 
-                // TODO: 4) Implement a Log Fragment in which the various threads are going to be adding logs add button to search fragment
-                LoggingFragment.tvdAL = new ArrayList<LoggingFragment.TextViewDetails>();
+                // TODO: 6) Thread for PEER DISCOVERY (which runs once our records are either not fresh (loops itself), non-existent or non repsonsive 1 time)
+                SearchingNodeFragment.lbsEC4PeerDiscRestart = lbsEC; // for PEER DISCOVERY thread restarting
+                SearchingNodeFragment.ServingPeerArrayList = new ArrayList<SearchingNodeFragment.ServingPeer>();
+                P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC);
+                P2PRelayServerInteractions.qThread.start();
 
-                // TODO: 5) Implement Thread for AVAILABILITY disclosure (yellow color)
-                // TODO: 6) Thread for PEER DISCOVERY (which runs once our records are either not fresh, non-existent or non repsonsive 1 time)
+
                 // TODO: 7) Thread for SERVING peers that communicate their requests to us
                 // TODO: 8) The listener on the SEARCH BUTTON adding all the records from our requests to other peers, consensus report and so forth, timeouts for irresponsive peers
 
@@ -117,8 +133,8 @@ public class FirstFragment extends Fragment {
         // Initialize LBS entities connectivity
         lbsEC = new LBSEntitiesConnectivity(getActivity(),this);
 
-        EditText LBSemIP_ET = view.findViewById(R.id.LBS_entities_manager_IP_ET);
-        EditText LBSemNAME_ET = view.findViewById(R.id.Node_Name_ET);
+        LBSemIP_ET = view.findViewById(R.id.LBS_entities_manager_IP_ET);
+        LBSemNAME_ET = view.findViewById(R.id.Node_Name_ET);
 
         if(lbsEC.ENTITIES_MANAGER_IP != null && lbsEC.MY_REAL_NODE_NAME != null ){
             LBSemIP_ET.setText(lbsEC.ENTITIES_MANAGER_IP.toString());
@@ -247,6 +263,8 @@ public class FirstFragment extends Fragment {
                 }
         );
 
+        autofillDebug();
+
         // Debug block size
         /*
         try {
@@ -358,7 +376,7 @@ public class FirstFragment extends Fragment {
             // We should also check whether there are certificates or not loaded and report it to the user the first time the app is
             try {
                 InterNodeCrypto.LoadCredentials();
-                if (InterNodeCrypto.checkMyCreds()) {
+                if ( InterNodeCrypto.checkMyCreds() ) {
                     Log.d("Initial credentials check!", "The credentials are loaded & ready!");
                     getActivity().runOnUiThread(
                             new Runnable() {
@@ -397,6 +415,37 @@ public class FirstFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
         binding = null;
+    }
+
+    public void startLoadingAnimation(String x){
+        if(x == "services") {
+            ImageView iv = binding.RemoteServicesOnlineSTATUS;
+            iv.post(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            AnimatedImageDrawable animatedImageDrawable = (AnimatedImageDrawable) iv.getDrawable();
+                            if (animatedImageDrawable != null) {
+                                animatedImageDrawable.start();
+                            }
+                        }
+                    }
+            );
+        }
+        if(x == "credentials") {
+            ImageView iv = binding.CredentialsLoadedSTATUS;
+            iv.post(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            AnimatedImageDrawable animatedImageDrawable = (AnimatedImageDrawable) iv.getDrawable();
+                            if (animatedImageDrawable != null) {
+                                animatedImageDrawable.start();
+                            }
+                        }
+                    }
+            );
+        }
     }
 
 }
