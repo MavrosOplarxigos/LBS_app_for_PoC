@@ -106,22 +106,22 @@ public class FirstFragment extends Fragment {
                 LoggingFragment.tvdAL = new ArrayList<LoggingFragment.TextViewDetails>();
 
                 // choose random serving port between 56000 - 57000
-                TCPServerThread.initServingPort();
+                TCPServerControlClass.initServingPort();
+                TCPServerControlClass.lbsEC = lbsEC;
+                // 7) Thread for SERVING peers that communicate their requests to us
+                // after we have chosen a port we can now start the thread for listening for client querying node requests
+                TCPServerControlClass.AcceptThread = new TCPServerControlClass.TCPServerAcceptingThread();
 
                 // DONE: Start a thread for disclosing our IP address and port which is for accepting incoming connections from querying nodes
                 // to the P2P AVAILABILITY server in a constant time interval
                 P2PRelayServerInteractions.aThread = new P2PRelayServerInteractions.AvailabilityThread(lbsEC);
                 P2PRelayServerInteractions.aThread.start();
 
-                // TODO: 6) Thread for PEER DISCOVERY (which runs once our records are either not fresh (loops itself), non-existent or non repsonsive 1 time)
+                // DONE: 6) Thread for PEER DISCOVERY (which runs once our records are either not fresh (loops itself), non-existent or irresponsive 1 time)
                 SearchingNodeFragment.lbsEC4PeerDiscRestart = lbsEC; // for PEER DISCOVERY thread restarting
                 SearchingNodeFragment.ServingPeerArrayList = new ArrayList<SearchingNodeFragment.ServingPeer>();
                 P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC);
                 P2PRelayServerInteractions.qThread.start();
-
-
-                // TODO: 7) Thread for SERVING peers that communicate their requests to us
-                // TODO: 8) The listener on the SEARCH BUTTON adding all the records from our requests to other peers, consensus report and so forth, timeouts for irresponsive peers
 
                 // going to the map fragment
                 NavHostFragment.findNavController(FirstFragment.this)

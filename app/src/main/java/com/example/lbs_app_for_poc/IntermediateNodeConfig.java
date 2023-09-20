@@ -39,13 +39,13 @@ import java.util.HashSet;
 import java.util.List;
 
 public class IntermediateNodeConfig extends Fragment {
-
+/*
     // ip address for informing the client
     public static InetAddress my_ip_address = null;
 
     public static int single_port_to_open;
     public HashSet < Integer > usedPorts;
-    public static ArrayList < TCPServerThread > serverThreadsArrayList;
+    // public static ArrayList < TCPServerThread > serverThreadsArrayList;
     // message for max connections
     boolean MessageMaxConns = false;
     // 15 was chosen arbitrarily but a small number of nodes should be chosen for the safety of the serving node
@@ -187,7 +187,7 @@ public class IntermediateNodeConfig extends Fragment {
                 });
                 /*loggingSV.post(()-> {
                     loggingSV.fullScroll(ScrollView.FOCUS_DOWN);
-                });*/
+                });
 
             }
         };
@@ -327,5 +327,5 @@ public class IntermediateNodeConfig extends Fragment {
         }
 
     }
-
+*/
 }

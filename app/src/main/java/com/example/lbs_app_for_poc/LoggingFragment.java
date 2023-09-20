@@ -22,12 +22,16 @@ import android.widget.TextView;
 import org.w3c.dom.Text;
 
 import java.util.ArrayList;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class LoggingFragment extends Fragment {
 
     public static ScrollView MainLogSV;
     public static LinearLayout MainLogLL = null;
     public static ArrayList <TextViewDetails> tvdAL; // we just update this array list and the logs will appear when switching to the fragment
+    public static final Lock mutexTvdAL = new ReentrantLock();
+
     public static LiveUpdateThread liveUpdateThread = null;
     public boolean stopLiveUpdate;
     public int SoFarAddedTVs;

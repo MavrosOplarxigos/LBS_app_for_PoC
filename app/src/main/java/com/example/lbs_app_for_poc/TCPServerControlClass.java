@@ -1,10 +1,9 @@
 package com.example.lbs_app_for_poc;
 
+import android.graphics.Color;
 import android.os.Bundle;
-import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
-import android.widget.TextView;
 
 import org.json.JSONObject;
 
@@ -16,44 +15,92 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
-import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
-import java.security.SecureRandom;
 import java.security.SignatureException;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Random;
-import java.util.regex.Pattern;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 
-public class TCPServerThread extends Thread{
+// This thread is going to spawn the threads for handling querying peers that connect to the
+// serving port defined in this class
+public class TCPServerControlClass{
 
-    public ServerSocket serverSocket;
-    private Handler uiHandler;
-    public static final char transmission_del = '|';
-    public static int MyServingPort;
+    public static int MyServingPort; // The number of the port to listen for connection to
+    public static TCPServerAcceptingThread AcceptThread;
     public static final int max_transmission_cutoff = 300000; // 301K bytes per message exchange
-    public X509Certificate current_peer_cert; // the current peer of the connection every time
-    public String current_peer_id;
-
-    public TCPServerThread(ServerSocket s,Handler uiHandler){
-        serverSocket = s;
-        this.uiHandler = uiHandler;
-    }
+    public static final char transmission_del = '|';
+    public static final int MAX_WAIT_QUERYING_NODE_MSEC = 1000;
+    public static LBSEntitiesConnectivity lbsEC = null;
 
     public static void initServingPort(){
         int MIN_PORT = 56000;
         int MAX_PORT = 58000;
         Random random = new Random();
-        TCPServerThread.MyServingPort = random.nextInt(MAX_PORT - MIN_PORT + 1) + MIN_PORT;
+        MyServingPort = random.nextInt(MAX_PORT - MIN_PORT + 1) + MIN_PORT;
+        // initialize serving pseudo credentials
+        ServingNodeQueryHandleThread.my_PSEUDO_CREDS_TO_COPY_lock = new ReentrantLock();
+        ServingNodeQueryHandleThread.my_PSEUDO_CREDS_TO_COPY_lock.lock();
+        ServingNodeQueryHandleThread.my_cert_to_copy = InterNodeCrypto.pseudonymous_certificates.get(0);
+        ServingNodeQueryHandleThread.my_key_to_copy = InterNodeCrypto.pseudonymous_privates.get(0);
+        ServingNodeQueryHandleThread.my_PSEUDO_CREDS_TO_COPY_lock.unlock();
     }
 
+    public static class TCPServerAcceptingThread extends Thread{
+
+        public static ServerSocket serverSocket;
+        public static final int WAIT_AFTER_ACCEPT_FAILURE_MSEC = 300;
+
+        public TCPServerAcceptingThread(){
+            try {
+                serverSocket = new ServerSocket(TCPServerControlClass.MyServingPort);
+            }
+            catch (Exception e){
+                Log.d("TCPServerAcceptingThread","Could not construct the socket for listenting!");
+                e.printStackTrace();
+                throw new RuntimeException();
+            }
+        }
+
+        @Override
+        public void run() {
+            while(true){
+                try {
+                    Socket s = serverSocket.accept();
+                    s.setSoTimeout(MAX_WAIT_QUERYING_NODE_MSEC);
+                    // spawn the thread for handling the new client querying node
+                    ServingNodeQueryHandleThread neo_nima = new ServingNodeQueryHandleThread(s);
+                    neo_nima.start();
+                }
+                catch (IOException e) {
+                    e.printStackTrace();
+                    Log.d("TCPServerAcceptingThread","Error while accepting connection on serving socket!");
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("ERROR: Serving Socket Accept Failure!", Color.RED));
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepting cooldown for " + WAIT_AFTER_ACCEPT_FAILURE_MSEC + " msec.", Color.YELLOW));
+                    LoggingFragment.mutexTvdAL.unlock();
+                    try {
+                        Thread.sleep(WAIT_AFTER_ACCEPT_FAILURE_MSEC);
+                    }
+                    catch (InterruptedException ex) {
+                        Log.d("AcceptingThread","Sleeping Error!");
+                        ex.printStackTrace();
+                    }
+                    continue;
+                }
+            }
+        }
+
+    }
+
+    /*
     public void run(){
 
         Log.d("TPC server","The server thread is now running!");
@@ -458,6 +505,8 @@ public class TCPServerThread extends Thread{
                         // [EncryptedJSONObjectAnswerByteArraySize] |
                         // [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
 
+                        // TODO: VERY IMPORTANT STEP ALSO ADD NOW THE STEPS FOR SENDING THE SIGNATURE OF THE QUERRY STRING CONCATENATED WITH
+
                         Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArray size is " + EncryptedJSONObjectAnswerByteArray.length );
                         Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArraySize is " + new String(EncryptedJSONObjectAnswerByteArraySize,StandardCharsets.UTF_8) );
                         Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArraySigned size is " + EncryptedJSONObjectAnswerByteArraySigned.length );
@@ -554,84 +603,6 @@ public class TCPServerThread extends Thread{
         }
 
     }
-
-    public static boolean checkFieldsClientHello(byte [][] arr, String receiver){
-
-        if(arr.length > 4){
-            Log.d("TCP " + receiver,"More than 4 fields received in Client Hello. Dropping connection!");
-            return false;
-        }
-
-        if(arr.length < 4){
-            Log.d("TCP " + receiver,"Less than 4 fields received in Client Hello. Dropping connection!");
-            return false;
-        }
-
-        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [Timestamp]:8 | [Signed Timestamp]: 256
-
-        // Check timestamp freshness
-        if( !InterNodeCrypto.isTimestampFresh(arr[2]) ){
-            Log.d("TCP " + receiver,"The timestamp is not fresh!");
-            return false;
-        }
-
-        // HELLO
-        if( !( Arrays.equals(arr[0], "HELLO".getBytes()) ) ) {
-            return false;
-        }
-
-        // CERTIFICATE BYTES
-        // THE FOLLOWING CHECK SHOULD NOT BE CARRIED OUT IF THE CERTIFICATE WE GET IS ONLY THE ENCODED PART
-        /*if( !( arr[1].startsWith("-----BEGIN CERTIFICATE-----") && arr[1].endsWith("-----END CERTIFICATE-----") ) ){
-            return false;
-        }*/
-        // Let's check that the certificate can be read
-        X509Certificate cert;
-        try{
-            // cert = InterNodeCrypto.CertFromString(arr[1]);
-            // For the certificate we get its own byte array
-            cert = InterNodeCrypto.CertFromByteArray(arr[1]);
-        }
-        catch(Exception e){
-            Log.d("TCP " + receiver,"Certificate Field invalid!");
-            e.printStackTrace();
-            return false;
-        }
-
-        // CHECK THAT THE CERTIFICATE IS SIGNED BY THE CA
-        if( !(CryptoChecks.isCertificateSignedBy(cert,InterNodeCrypto.CA_cert)) ){
-            Log.d("TCP " + receiver,"The received certificate is not signed by the CA!");
-            return false;
-        }
-
-        // CHECK NONCE SIZE
-        if( arr[2].length != InterNodeCrypto.TIMESTAMP_BYTES ){
-            Log.d("TCP " + receiver,"Incorrect timestampe size!");
-            return false;
-        }
-
-        // CHECK THAT THE timestamp IS SIGNED CORRECTLY
-        try {
-            if ( !(CryptoChecks.isSignedByCert(arr[2], arr[3], cert)) ) {
-                Log.d("TCP " + receiver,"The signed timestamp is NOT SIGNED by the public key of the certificate!");
-                return false;
-            }
-        }
-        catch (Exception e){
-            Log.d("TCP " + receiver,"Can't verify the timestamp signature!");
-            e.printStackTrace();
-            return false;
-        }
-
-        Log.d("TCP " + receiver, "The fields check out and they are the following: ");
-        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]: 8 | [SIGNED_NONCE]: 256
-        Log.d("TCP " + receiver, "HELLO = " + arr[0] );
-        Log.d("TCP " + receiver, "CERT = " + InterNodeCrypto.getCertDetails(cert) );
-        Log.d("TCP " + receiver, "timestamp = " + arr[2] );
-        Log.d("TCP " + receiver, "signed timestamp = " + arr[3] );
-
-        return true;
-
-    }
+    */
 
 }

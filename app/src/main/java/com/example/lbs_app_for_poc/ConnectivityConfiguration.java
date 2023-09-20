@@ -45,7 +45,7 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class ConnectivityConfiguration extends Fragment {
-
+/*
     // TCP connection configuration
     // Variables should be static
     public static InetAddress my_ip_address = null;
@@ -69,7 +69,7 @@ public class ConnectivityConfiguration extends Fragment {
         /*if (getArguments() != null) {
             caller_fragment = savedInstanceState.getString("caller_fragment");
             Log.d("NET CONFIG FRAG","The caller fragment is " + caller_fragment);
-        }*/
+        }
     }
 
     @Override
@@ -133,7 +133,7 @@ public class ConnectivityConfiguration extends Fragment {
             my_port = 55777;
         }
         EditText my_port_TV = (EditText) view.findViewById(R.id.myTCPport_value);
-        my_port_TV.setText(Integer.toString(my_port));*/
+        my_port_TV.setText(Integer.toString(my_port));
 
         // Displaying peer's port
         if(peer_port == -1){
@@ -438,5 +438,5 @@ public class ConnectivityConfiguration extends Fragment {
         }
         return peer_addr_array;
     }
-
+*/
 }

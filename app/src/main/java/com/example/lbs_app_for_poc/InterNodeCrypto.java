@@ -24,6 +24,7 @@ import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
@@ -299,6 +300,35 @@ public class InterNodeCrypto {
         return dec_data;
     }
 
+    public static byte [] decryptWithKey(byte [] input, PrivateKey key_given) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+
+        // Create the RSA cipher with OAEP padding
+        Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+        cipher.init(Cipher.DECRYPT_MODE, key_given);
+
+        // Determine the maximum block size for decryption
+        int blockSize = cipher.getBlockSize();
+
+        // Calculate the size of the output array
+        int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);
+        byte[] dec_data = new byte[outputSize];
+
+        // Decrypt block by block
+        int inputOffset = 0;
+        int outputOffset = 0;
+        while (inputOffset < input.length) {
+            int inputLength = Math.min(blockSize, input.length - inputOffset);
+            byte[] inputBlock = new byte[inputLength];
+            System.arraycopy(input, inputOffset, inputBlock, 0, inputLength);
+            byte[] decryptedBlock = cipher.doFinal(inputBlock);
+            System.arraycopy(decryptedBlock, 0, dec_data, outputOffset, decryptedBlock.length);
+            inputOffset += blockSize;
+            outputOffset += decryptedBlock.length;
+        }
+
+        return dec_data;
+    }
+
     public static CryptoTimestamp getSignedTimestamp() throws NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
         CryptoTimestamp answer = new CryptoTimestamp();
         try {
@@ -313,6 +343,41 @@ public class InterNodeCrypto {
             throw e;
         }
     }
+
+    public static CryptoTimestamp getSignedTimestampWithConcatenationWithKey(byte [] toConcatenate, PrivateKey my_key) throws NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
+        CryptoTimestamp answer = new CryptoTimestamp();
+        try {
+            long timestamp = System.currentTimeMillis() + NTP_TIME_OFFSET; // We want to use the NTP time
+            byte [] timestampBytes = ByteBuffer.allocate(Long.BYTES).putLong(timestamp).array();
+            answer.timestamp = timestampBytes;
+            int concatenation_size = toConcatenate.length + timestampBytes.length;
+            byte [] concatenation = new byte[concatenation_size];
+            System.arraycopy(timestampBytes, 0, concatenation, 0, timestampBytes.length);
+            System.arraycopy(toConcatenate, 0, concatenation, timestampBytes.length, toConcatenate.length);
+            answer.signed_timestamp_conncatenated_with_info = signByteArrayWithPrivateKey(concatenation,my_key);
+            return answer;
+        }
+        catch (Exception e){
+            Log.d("Timestamp Signing With concatenation","Could not sign the timestamp byte array!");
+            throw e;
+        }
+    }
+
+    public static CryptoTimestamp getSignedTimestampWithKey(PrivateKey key_to_use) throws NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
+        CryptoTimestamp answer = new CryptoTimestamp();
+        try {
+            long timestamp = System.currentTimeMillis() + NTP_TIME_OFFSET; // We want to use the NTP time
+            byte [] timestampBytes = ByteBuffer.allocate(Long.BYTES).putLong(timestamp).array();
+            answer.timestamp = timestampBytes;
+            answer.signed_timestamp = signByteArrayWithPrivateKey(timestampBytes,key_to_use);
+            return answer;
+        }
+        catch (Exception e){
+            Log.d("Timestamp Signing","Could not sign the timestamp byte array!");
+            throw e;
+        }
+    }
+
     public static boolean isTimestampFresh(byte [] timestamp){
         long currentTime = System.currentTimeMillis() + NTP_TIME_OFFSET; // NTP time
         long timestampValue = ByteBuffer.wrap(timestamp).getLong();
@@ -343,6 +408,16 @@ public class InterNodeCrypto {
         signature.update(input);
         return signature.sign();
 
+    }
+
+    public static byte [] signByteArrayWithPrivateKey(byte [] input, PrivateKey key_to_use) throws NoSuchAlgorithmException, NoSuchProviderException, InvalidKeyException, SignatureException {
+        Signature signature = CryptoChecks.getSignatureInstanceByAlgorithm(key_to_use.getAlgorithm());
+        if(signature == null){
+            Log.d("Signing","ERROR: No signature instance from the key provided!");
+        }
+        signature.initSign(key_to_use);
+        signature.update(input);
+        return signature.sign();
     }
 
     public static String getCertDetails(@NonNull File certificate) throws FileNotFoundException {
@@ -403,6 +478,85 @@ public class InterNodeCrypto {
             }
         }
         return "None!";
+    }
+
+    public static boolean checkFieldsClientHello(byte [][] arr, String receiver){
+
+        if(arr.length > 4){
+            Log.d("TCP " + receiver,"More than 4 fields received in Hello. Dropping connection!");
+            return false;
+        }
+
+        if(arr.length < 4){
+            Log.d("TCP " + receiver,"Less than 4 fields received in Hello. Dropping connection!");
+            return false;
+        }
+
+        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [Timestamp]:8 | [Signed Timestamp]: 256
+
+        // Check timestamp freshness
+        if( !InterNodeCrypto.isTimestampFresh(arr[2]) ){
+            Log.d("TCP " + receiver,"The timestamp is not fresh!");
+            return false;
+        }
+
+        // HELLO
+        if( !( Arrays.equals(arr[0], "HELLO".getBytes()) ) ) {
+            return false;
+        }
+
+        // CERTIFICATE BYTES
+        // THE FOLLOWING CHECK SHOULD NOT BE CARRIED OUT IF THE CERTIFICATE WE GET IS ONLY THE ENCODED PART
+        /*if( !( arr[1].startsWith("-----BEGIN CERTIFICATE-----") && arr[1].endsWith("-----END CERTIFICATE-----") ) ){
+            return false;
+        }*/
+        // Let's check that the certificate can be read
+        X509Certificate cert;
+        try{
+            // cert = InterNodeCrypto.CertFromString(arr[1]);
+            // For the certificate we get its own byte array
+            cert = InterNodeCrypto.CertFromByteArray(arr[1]);
+        }
+        catch(Exception e){
+            Log.d("TCP " + receiver,"Certificate Field invalid!");
+            e.printStackTrace();
+            return false;
+        }
+
+        // CHECK THAT THE CERTIFICATE IS SIGNED BY THE CA
+        if( !(CryptoChecks.isCertificateSignedBy(cert,InterNodeCrypto.CA_cert)) ){
+            Log.d("TCP " + receiver,"The received certificate is not signed by the CA!");
+            return false;
+        }
+
+        // CHECK NONCE SIZE
+        if( arr[2].length != InterNodeCrypto.TIMESTAMP_BYTES ){
+            Log.d("TCP " + receiver,"Incorrect timestampe size!");
+            return false;
+        }
+
+        // CHECK THAT THE timestamp IS SIGNED CORRECTLY
+        try {
+            if ( !(CryptoChecks.isSignedByCert(arr[2], arr[3], cert)) ) {
+                Log.d("TCP " + receiver,"The signed timestamp is NOT SIGNED by the public key of the certificate!");
+                return false;
+            }
+        }
+        catch (Exception e){
+            Log.d("TCP " + receiver,"Can't verify the timestamp signature!");
+            e.printStackTrace();
+            return false;
+        }
+
+        Log.d("TCP " + receiver, "The fields check out and they are the following: ");
+        // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]: 8 | [SIGNED_NONCE]: 256
+        Log.d("TCP " + receiver, "HELLO = " + arr[0] );
+        Log.d("TCP " + receiver, "CERT = " + InterNodeCrypto.getCertDetails(cert) );
+        Log.d("TCP " + receiver, "timestamp = " + arr[2] );
+        Log.d("TCP " + receiver, "signed timestamp = " + arr[3] );
+
+        return true;
+
     }
 
 }

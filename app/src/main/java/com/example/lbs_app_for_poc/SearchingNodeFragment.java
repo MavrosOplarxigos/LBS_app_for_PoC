@@ -54,6 +54,7 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Array;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.HttpURLConnection;
@@ -65,6 +66,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SignatureException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
@@ -73,11 +78,12 @@ import javax.net.ssl.HttpsURLConnection;
 
 public class SearchingNodeFragment extends Fragment implements OnMapReadyCallback {
 
+    private static final int MAX_PEER_RESPONSES = 10;
     private FragmentSecondBinding binding;
     private MapView mMapView;
     private GoogleMap mMap=null;
     private static final String MAPVIEW_BUNDLE_KEY = "MapViewBundleKey";
-    private Button search_button;
+    public static Button search_button;
     private EditText search_keyword_input;
     public GeoJsonLayer results_layer = null;
     private MapSearchItem msi; // The fundamental object that defines the search as soon as the search button is pressed
@@ -85,9 +91,15 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     // updated by the PEER DISCOVERY Thread (aka QUERY Thread on P2P side) which runs in the background
     // if for some reason all the peers we were given are inactive we query the signing server directly
     public static ArrayList<ServingPeer> ServingPeerArrayList;
+    public static final Lock mutextServingPeerArrayList = new ReentrantLock();
     public static LBSEntitiesConnectivity lbsEC4PeerDiscRestart;
 
-    public class ServingPeer{
+    // The bytes arrays for the responses in case of peer querying
+    public static byte [][] peerResponseDecJson = new byte[MAX_PEER_RESPONSES][];
+    public static final Lock [] mutexPeerResponseDecJson = new ReentrantLock[MAX_PEER_RESPONSES];
+    public static CountDownLatch peer_thread_entered_counter;
+
+    public static class ServingPeer{
         // public String DistinguishedName; I don't know the name. I expect only the IP and Port to be of a SOME peer.
         public InetAddress PeerIP;
         public int PeerPort;
@@ -257,7 +269,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 }
         );
 
-
         // allowing for HTTPS connections
         network_permit();
 
@@ -269,37 +280,23 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     @Override
                     public void onClick(View view) {
 
+// ------------------------------------------------------------------------------- START OF PRESSING THE SEARCH BUTTON ----------------------------------------------------------------------
+
+                        // Check UI
                         if(mMap == null){
                             return;
                         }
-
-                        // we must have a peer to forward the request to
-                        if(ConnectivityConfiguration.current_peer_cert == null){
-                            Log.d("SEARCH CLICK","No peer to forward the request to!");
-                            Toast.makeText(getContext(), "No peer to forward the request to!", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-
-                        if(ConnectivityConfiguration.my_client_socket.isClosed()){
-                            Log.d("SEARCH CLICK","The peer closed the connection!");
-                            Toast.makeText(getContext(), "The peer closed the connection!", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-
                         if(msi.keyword.isEmpty()){
                             Log.d("SEARCH CLICK","The search keyword is undefined");
-                            Toast.makeText(getContext(), "Please specify a keyword first", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(getContext(), "No keyword", Toast.LENGTH_SHORT).show();
                             return;
                         }
-
                         if(search_keyword_input.hasFocus()){
                             search_keyword_input.setImeOptions(EditorInfo.IME_ACTION_DONE);
                             search_keyword_input.clearFocus();
                         }
 
-                        // OK so the map is already prepared so now we can carry out the search
-                        // TODO: Reduce the number of bytes that are send to the server by sending a string that only contains the fields needed
-                        // TODO: rather than the entire URL (modify MapSearchItem class)
+                        // URL for querying the LBS preparation
                         String api_call_string = "";
                         try {
                             api_call_string = msi.apicall();
@@ -310,308 +307,56 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                             Log.d("API CALL STRING CREATION ERROR","Can't get meta-data and thus Places API key!");
                             return;
                         }
-
-                        // Now we need to instead of carrying out the request ourselves establish connectivity to the server and send msi as a byte array or string
-                        // 3) CLIENT MESSAGE: SENT MESSAGE TO THE SERVER (QUERY)
-
-                        // In this case we are sending a query so the format is the following:
-                        // [QUERY] | [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] | [API_CALL_SIGNED_BYTES]
-
-                        byte [] queryBytesClientQuery = "QUERY".getBytes();
                         byte [] APICallBytesClientQuery = api_call_string.getBytes();
 
-                        byte [] APICallEncryptedBytesClientQuery;
-                        try {
-                            APICallEncryptedBytesClientQuery = InterNodeCrypto.encryptWithPeerKey(APICallBytesClientQuery,ConnectivityConfiguration.current_peer_cert);
-                        } catch (NoSuchPaddingException e) {
-                            throw new RuntimeException(e);
-                        } catch (NoSuchAlgorithmException e) {
-                            throw new RuntimeException(e);
-                        } catch (InvalidKeyException e) {
-                            throw new RuntimeException(e);
-                        } catch (IllegalBlockSizeException e) {
-                            throw new RuntimeException(e);
-                        } catch (BadPaddingException e) {
-                            throw new RuntimeException(e);
-                        }
+                        search_button.setText("...");
 
-                        byte [] APICallBytesSignedClientQuery;
-                        try {
-                            APICallBytesSignedClientQuery = InterNodeCrypto.signPrivateKeyByteArray(APICallEncryptedBytesClientQuery);
-                        } catch (NoSuchAlgorithmException e) {
-                            throw new RuntimeException(e);
-                        } catch (NoSuchProviderException e) {
-                            throw new RuntimeException(e);
-                        } catch (InvalidKeyException e) {
-                            throw new RuntimeException(e);
-                        } catch (SignatureException e) {
-                            throw new RuntimeException(e);
-                        }
+                        // Lock all resources needed for this:
+                        mutextServingPeerArrayList.lock(); // nobody is changing the peer list while we are using the peers
+                        search_button.setClickable(false); // can't search until this one is done
 
-                        byte [] APICallEncryptedBytesClientQueryLength = ("" + APICallEncryptedBytesClientQuery.length).getBytes();
-                        // 256
-                        Log.d("TCP client","The size of the query bytes should be " + new String(APICallEncryptedBytesClientQueryLength,StandardCharsets.UTF_8) );
-
-                        ByteArrayOutputStream baosClientQuery = new ByteArrayOutputStream();
-                        try {
-                            baosClientQuery.write(queryBytesClientQuery);
-                            baosClientQuery.write(TCPServerThread.transmission_del);
-                            baosClientQuery.write(APICallEncryptedBytesClientQueryLength);
-                            baosClientQuery.write(TCPServerThread.transmission_del);
-                            baosClientQuery.write(APICallEncryptedBytesClientQuery);
-                            baosClientQuery.write(TCPServerThread.transmission_del);
-                            baosClientQuery.write(APICallBytesSignedClientQuery);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-
-                        byte [] ClientQuery = baosClientQuery.toByteArray();
-                        // 523
-                        Log.d("TCP client","The size of the entire query message in bytes should be " + ClientQuery.length );
-
-                        try {
-                            ConnectivityConfiguration.outputStream.write(ClientQuery);
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                        Log.d("TCP CLIENT","The query has been sent to the Server!");
-
-                        // ---------------------------- POINT OF DISASTER -------------------------------------
-
-                        // 4.1) SERVER RESPONSE DECLARATION: RECEIVE THE RESPONSE SIZE IN BYTES
-                        // [RESPONSE] | [RESPONSE SIZE IN BYTES]
-
-                        ByteArrayOutputStream baosServerResponseDeclaration;
-                        try {
-                            baosServerResponseDeclaration = new ByteArrayOutputStream();
-                            byte[] bufferServerResponseDeclaration = new byte[1000];
-                            int bytesReadServerResponseDeclaration;
-                            int total_bytesServerResponseDeclaration = 0;
-                            while( (bytesReadServerResponseDeclaration = ConnectivityConfiguration.inputStream.read(bufferServerResponseDeclaration)) != -1 ) {
-                                Log.d("TCP CLIENT","Now read " + bytesReadServerResponseDeclaration + " bytes!");
-                                baosServerResponseDeclaration.write(bufferServerResponseDeclaration, 0, bytesReadServerResponseDeclaration);
-                                total_bytesServerResponseDeclaration += bytesReadServerResponseDeclaration;
-                                if (bytesReadServerResponseDeclaration < bufferServerResponseDeclaration.length) {
-                                    break; // The buffer is not filled up that means we have reached the EOF
-                                }
-                                if (total_bytesServerResponseDeclaration > TCPServerThread.max_transmission_cutoff) {
-                                    Log.d("TCP CLIENT","The maximum transmission cutoff is reached!");
-                                    break;
-                                }
+                        // If there is no peer then we directly contact the signing server
+                        // This is what we call a PEER MISS: due to no peers discovered/given
+                        if(ServingPeerArrayList.size() == 0){
+                            LoggingFragment.mutexTvdAL.lock();
+                            LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No Peers. Direct Request to Signing Server",Color.YELLOW));
+                            byte [] decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery);
+                            if( decJson == null ){
+                                LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("Signing Server No Response",Color.RED));
                             }
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                        byte [] bytesServerResponseDeclartion = baosServerResponseDeclaration.toByteArray();
-
-                        Log.d("TCP CLIENT","Received Server Response Declaration!");
-
-                        // SEPARATING THE FIELDS OF SERVER RESPONSE DECLARATION
-
-                        // First let's read the prefix RESPONSE
-                        int ci = 0; // current index bytesServerResponseDeclaration
-                        int tempci = ci;
-
-                        // [RESPONSE]
-                        ByteArrayOutputStream baosServerResponseDeclarationResponse = new ByteArrayOutputStream();
-                        for(int i=ci;(i < bytesServerResponseDeclartion.length) && ((char)( bytesServerResponseDeclartion[i] ) != TCPServerThread.transmission_del);i++){
-                            baosServerResponseDeclarationResponse.write( (byte) bytesServerResponseDeclartion[i] );
-                            ci=i;
-                        }
-                        // check that the message has the prefix RESPONSE
-                        if( !( "RESPONSE".equals( new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) ) ) ){
-                            Log.d("TCP CLIENT","ERROR: The prefix of the received message is " + new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) );
-                            Toast.makeText(null, "Invalid message. Prefix not equal to RESPONSE!", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        Log.d("TCP CLIENT","SUCCESS: the prefix of the received message from the intermediate node is " + new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) );
-                        ci++; // Now must be on delimiter
-                        if( (char)( bytesServerResponseDeclartion[ci] ) != TCPServerThread.transmission_del ){
-                            Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the RESPONSE bytes. Found " + bytesServerResponseDeclartion[ci]);
-                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        ci++;
-
-                        // Then let's read how many bytes the response will be
-                        // [RESPONSE SIZE IN BYTES]
-                        String ResponseSizeInBytesString = "";
-                        for(int i=ci;(i< bytesServerResponseDeclartion.length) && ((char)( bytesServerResponseDeclartion[i] ) != TCPServerThread.transmission_del); i++){
-                            ResponseSizeInBytesString += (char)( bytesServerResponseDeclartion[i] );
-                            ci = i;
-                        }
-                        Log.d("TCP CLIENT","The ResponseSizeInBytesString is " + ResponseSizeInBytesString);
-                        int ResponseSizeInBytes = Integer.parseInt(ResponseSizeInBytesString);
-
-                        // 4.2) CLIENT DECLARATION ACCEPT
-                        try {
-                            ConnectivityConfiguration.outputStream.write("ACK".getBytes());
-                            Log.d("TCP CLIENT","ACKNOWLEDGMENT OF SERVER RESPONSE DECLARATION SENT SUCCESSFULLY");
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-
-                        // 4.3) SERVER RESPONSE: RECEIVE THE ACTUAL RESPONSE BYTES FROM THE SERVER
-                        // [JSONObjectAnswerByteArraySize] | [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
-                        // NOW BASED ON KNOWING HOW MUCH BYTES WE SHOULD EXPECT WE CAN READ THE ACTUAL RESPONSE
-
-                        ByteArrayOutputStream baosServerResponse;
-                        try {
-
-                            baosServerResponse = new ByteArrayOutputStream();
-                            byte[] bufferServerResponse = new byte[1000]; // we will attempt using a bigger buffer here
-                            int bytesReadServerResponse;
-                            int total_bytesServerResponse = 0;
-                            int times_waited = 0;
-                            while( total_bytesServerResponse < ResponseSizeInBytes ) {
-                                bytesReadServerResponse = ConnectivityConfiguration.inputStream.read(bufferServerResponse);
-                                total_bytesServerResponse += bytesReadServerResponse;
-                                if( (bytesReadServerResponse == -1) && (total_bytesServerResponse < ResponseSizeInBytes) ){
-                                    if(times_waited == 0) {
-                                        Log.d("TCP CLIENT", "Waiting for bytes from intermediate node!");
-                                    }
-                                    if(times_waited == 100) {
-                                        Log.d("TCP CLIENT", "Waited more thatn 100 times for bytes to reach the client! " +
-                                                "So far we have read only " + total_bytesServerResponse + " bytes!");
-                                    }
-                                    times_waited++;
-                                    continue;
-                                }
-                                Log.d("TCP CLIENT","Now read " + bytesReadServerResponse + " bytes!");
-                                baosServerResponse.write(bufferServerResponse, 0, bytesReadServerResponse);
-                                if (bytesReadServerResponse < bufferServerResponse.length) {
-                                    Log.d("TCP CLIENT","A segment was read that had only " + bytesReadServerResponse + " bytes!" +
-                                            " So far " + total_bytesServerResponse + "have been read!");
-                                    if(total_bytesServerResponse < ResponseSizeInBytes){
-                                        Log.d("TCP CLIENT","We won't brake the loop because not all of the expected bytes were read!");
-                                        continue;
-                                    }
-                                    else {
-                                        Log.d("TCP CLIENT","Since it seems that we have read all the bytes we will break the loop!");
-                                        break; // The buffer is not filled up that means we have reached the EOF
-                                    }
-                                }
-                                if (total_bytesServerResponse > TCPServerThread.max_transmission_cutoff) {
-                                    Log.d("TCP CLIENT","ERROR: The maximum transmission cutoff is reached! We did not expect messages more than " + TCPServerThread.max_transmission_cutoff + " bytes!");
-                                    break;
-                                }
+                            else{
+                                LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("Signing Server Responded",Color.GREEN));
                             }
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        }
-                        byte [] bytesServerResponse = baosServerResponse.toByteArray();
-                        Log.d("TCP CLIENT","SUCCESS: Received ServerResponse. Size of byte array is " + bytesServerResponse.length);
-
-                        // SEPARATING THE FIELDS
-                        // [EncryptedJSONObjectAnswerByteArraySize] | [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
-                        byte [][] fieldsServerResponse = new byte[2][]; // [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
-                        ci = 0; // current index bytesServerResponse
-                        tempci = ci;
-
-                        // EncryptedJSONObjectAnswerByteArraySize
-                        String EncryptedJSONObjectAnswerByteArraySizeString = "";
-                        for(int i=ci;(char)( bytesServerResponse[i] ) != TCPServerThread.transmission_del; i++){
-                            EncryptedJSONObjectAnswerByteArraySizeString += (char)( bytesServerResponse[i] );
-                            ci = i;
-                        }
-                        Log.d("TCP CLIENT","The EncryptedJSONObjectAnswerByteArraySizeString is " + EncryptedJSONObjectAnswerByteArraySizeString);
-                        int EncryptedJSONObjectAnswerByteArraySize = Integer.parseInt(EncryptedJSONObjectAnswerByteArraySizeString);
-
-                        ci++; // Now must be on delimiter
-                        if( (char)(bytesServerResponse[ci]) != TCPServerThread.transmission_del ){
-                            Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the server response json object ansewr bytes array size. Found " + bytesServerResponse[ci]);
-                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        ci++;
-
-                        // EncryptedJSONObjectAnswerByteArray
-                        tempci = ci;
-                        ByteArrayOutputStream baosServerResponseJSONObjectAnswerByteArray = new ByteArrayOutputStream();
-                        for(int i=ci;i<ci+EncryptedJSONObjectAnswerByteArraySize;i++){
-                            baosServerResponseJSONObjectAnswerByteArray.write((byte)bytesServerResponse[i]);
-                            tempci = i;
-                        }
-                        fieldsServerResponse[0] = baosServerResponseJSONObjectAnswerByteArray.toByteArray();
-                        ci = tempci;
-
-                        ci++; // Now must be on delimiter
-                        if( (char)(bytesServerResponse[ci]) != TCPServerThread.transmission_del ){
-                            Log.d("TCP client","Expected " + TCPServerThread.transmission_del +" after the server response json object ansewr bytes. Found " + bytesServerResponse[ci]);
-                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        ci++;
-
-                        // JSONObjectAnswerByteArraySigned
-                        ByteArrayOutputStream baosServerResponseJSONObjectAnswerByteArraySigned = new ByteArrayOutputStream();
-                        for(int i=ci;i< bytesServerResponse.length;i++){
-                            baosServerResponseJSONObjectAnswerByteArraySigned.write((byte)(bytesServerResponse[i]));
-                        }
-                        fieldsServerResponse[1] = baosServerResponseJSONObjectAnswerByteArraySigned.toByteArray();
-
-                        Log.d("TCP client","The response has been received by the intermediate node! Now performing checks!");
-
-                        // Client: Success/Failure ← Verpub_server(Er,Sr)
-                        // Check that the JSON array is indeed signed by the peer server
-                        try {
-                            if( !CryptoChecks.isSignedByCert(fieldsServerResponse[0],fieldsServerResponse[1],ConnectivityConfiguration.current_peer_cert) ){
-                                Log.d("TCP client","The received response signature is not correct!");
-                                Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
-                                return;
-                            }
-                        } catch (NoSuchAlgorithmException e) {
-                            throw new RuntimeException(e);
-                        } catch (NoSuchProviderException e) {
-                            throw new RuntimeException(e);
-                        } catch (InvalidKeyException e) {
-                            throw new RuntimeException(e);
-                        } catch (SignatureException e) {
-                            throw new RuntimeException(e);
-                        }
-
-                        Log.d("TCP client","SUCCESS: The received response's signature is correct!");
-
-                        // Now we will decrypt the encrypted JSON object
-                        byte [] decryptedJSON;
-                        try {
-                            decryptedJSON = InterNodeCrypto.decryptWithOwnKey(fieldsServerResponse[0]);
-                        } catch (NoSuchPaddingException e) {
-                            throw new RuntimeException(e);
-                        } catch (NoSuchAlgorithmException e) {
-                            throw new RuntimeException(e);
-                        } catch (InvalidKeyException e) {
-                            throw new RuntimeException(e);
-                        } catch (IllegalBlockSizeException e) {
-                            throw new RuntimeException(e);
-                        } catch (BadPaddingException e) {
-                            throw new RuntimeException(e);
-                        }
-
-                        Log.d("TCP client","SUCCESS: The decryption of the response has finished!");
-
-                        // Now make the decrypted JSON byte array to JSONObject again
-                        String JSONObjectAnswer = new String(decryptedJSON,StandardCharsets.UTF_8);
-                        JSONObject answerJSON;
-                        try {
-                            answerJSON = new JSONObject(JSONObjectAnswer);
-                            Log.d("TCP client","SUCCESS: The response produced a JSON object successfully!");
-                        } catch (JSONException e) {
-                            Log.d("TCP client","ERROR: The response doesn't produce a JSON object as expected!");
-                            Toast.makeText(null, "Invalid answer from intermediate node!", Toast.LENGTH_SHORT).show();
-                            throw new RuntimeException(e);
-                        }
-
-                        if( answerJSON.toString().contains("\"status\":\"ZERO_RESULTS\"") ) {
-                            Toast.makeText(getContext(), "ERROR: No results for given keyword!", Toast.LENGTH_SHORT).show();
+                            apply_search_result(decJson);
+                            mutextServingPeerArrayList.unlock();
+                            LoggingFragment.mutexTvdAL.unlock();
+                            search_button.setClickable(true);
+                            search_button.setText("SEARCH");
                             return;
                         }
 
-                        Log.d("JSON PROCESSING","The transmission of data has finished! Now on to processing the JSON");
-                        JSONObject answer_geojsoned = json_to_geojson( answerJSON );
-                        Log.d("JSON PROCESSING","Modified answer from JSON to GEO_JSON format!");
-                        apply_result_layer(answer_geojsoned);
-                        Log.d("MAP UPDATE","The GeoJSON object has been added to the map layer for display!");
+                        // In the case we have multiple peers that can answer our query
+                        // We start the Threads for requesting answers from these peers.
+                        peer_thread_entered_counter = new CountDownLatch(ServingPeerArrayList.size());
+                        for(int i=0;i<ServingPeerArrayList.size();i++){
+                            PeerInteractions.PeerInteractionThread pi = new PeerInteractions.PeerInteractionThread(i,
+                                    ServingPeerArrayList.get(i).PeerIP,
+                                    ServingPeerArrayList.get(i).PeerPort,
+                                    APICallBytesClientQuery
+                                    );
+                            pi.start();
+                        }
+
+                        // We start our thread meant for receiving all the answers one by one
+                        // We pass the current serving list as an argument for the logging by this thread
+                        ResponseCollectionThread rct = new ResponseCollectionThread(ServingPeerArrayList);
+                        rct.start();
+
+                        // unlocking the resources
+                        mutextServingPeerArrayList.unlock();
+                        // we can return with no fear since for the button to be clickable again then it means that the request
+                        // was completed and the rct finished up processing the results
+                        return;
 
                     }
                 }
@@ -624,6 +369,154 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
         // we can now initialize the map search item
         msi = new MapSearchItem(getContext());
 
+    }
+
+    // - thread which waits for all the answers from the peers to be received DONE
+    // - checks and logs consensus status DONE
+    // - logs which peers responded and which have not. If there were in-correct signatures (NOT OF THE SIGNING SERVER) we log this as well
+    // - updates map based on one of the answers if we have consensus
+    // - TODO: in the case of no consensus we look at the signed timestamps from the signing server and pick the newest one? -> Implement timestamping of rsponses
+    public class ResponseCollectionThread extends Thread{
+
+        private ArrayList<ServingPeer> spal; // The array list of peers when the requests where sent to them
+
+        public ResponseCollectionThread(ArrayList<ServingPeer> sp){
+            spal = sp;
+        }
+        @Override
+        public void run() {
+            try {
+
+                // we ensure that all peer threads have entered and locked their respective reponse indexes
+                peer_thread_entered_counter.await();
+                // now we wait for all response index to be unlocked by their respective threads and thus become available
+                // we consequently will lock them so that we ensure that they do not change during their processing in this thread
+                int peers = spal.size();
+                for(int i=0;i<peers;i++){
+                    SearchingNodeFragment.mutexPeerResponseDecJson[i].lock();
+                }
+                LoggingFragment.mutexTvdAL.lock();
+
+                // RESPONSE RATE and CONSENSUS checking
+                int responded = 0;
+                int first_reponded = -1;
+                boolean consensus = true; // There is a consensus among the received answers 1 / there is not 0
+                for(int i=0;i<peers;i++){
+                    if(SearchingNodeFragment.peerResponseDecJson[i] != null) {
+                        responded++;
+                        if(first_reponded==-1){
+                            first_reponded = i;
+                        }
+                        else{
+                            consensus = consensus && ( Arrays.equals(peerResponseDecJson[i],peerResponseDecJson[first_reponded]) );
+                        }
+                    }
+                }
+
+                // log the RESPONSE RATE
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Query Response Rate = [" + responded + " / " + peers + "]",(peers==responded)?Color.GREEN:Color.RED));
+
+                if(responded == 0){
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Forced peer discovery thread restart! Cause: 0 responses to query.",Color.YELLOW));
+
+                    // TODO:
+                    // - unlock everything that this thread has locked DONE
+                    LoggingFragment.mutexTvdAL.unlock();
+                    for(int i=0;i<peers;i++){
+                        SearchingNodeFragment.mutexPeerResponseDecJson[i].unlock();
+                    }
+
+                    // - restart the peer discover thread
+                    // - use a countdown lock to check that indeed we have received a new answer form the P2P server
+                    // - if the new peer array list is not null call for a second try (basically do what happens when we click the button over again)
+                    // - call this function for second try (have a boolean to check that it is a second try)
+                    // - a second try should not retry with peers but instead directly connect to the signing server and log this.
+                }
+                if(!consensus){
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("No consensus reached! Using answer of peer with index " + first_reponded + ".",Color.RED));
+                    Log.d("ResponseCollectionThread","ERROR: Not all responses received consent with one another");
+                }
+                else {
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Consensus amongst ALL responses!",Color.GREEN));
+                    Log.d("ResponseCollectionThread", "SUCCESS: All responses received consent with each other!");
+                }
+
+                // applying the result that we got from the peers
+                apply_search_result(peerResponseDecJson[first_reponded]);
+
+                LoggingFragment.mutexTvdAL.unlock();
+                // unlocking the response bytes arrays for future searches
+                for(int i=0;i<peers;i++){
+                    SearchingNodeFragment.mutexPeerResponseDecJson[i].unlock();
+                }
+                // making the search button clickable again now that we know for sure the search is completed
+                getActivity().runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                SearchingNodeFragment.search_button.setClickable(true);
+                                search_button.setText("SEARCH");
+                            }
+                        }
+                );
+
+            }
+            catch (Exception e){
+                e.printStackTrace();
+                getActivity().runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                Toast.makeText(getContext(), "Response collection failed!", Toast.LENGTH_SHORT).show();
+                            }
+                        }
+                );
+                Log.d("ResponseCollectionThread","ERROR!");
+            }
+        }
+    }
+
+    /* The decryptedJSON byte array is the one we received either:
+    *  1) From directly talking with the Signing server.
+    *  2) From the consensus of the peer responses.
+    * */
+    void apply_search_result(byte [] decryptedJSON){
+
+        String JSONObjectAnswer = new String(decryptedJSON,StandardCharsets.UTF_8);
+        JSONObject answerJSON = null;
+
+        try {
+            answerJSON = new JSONObject(JSONObjectAnswer);
+            Log.d("apply_search_result","SUCCESS: The response produced a JSON object successfully!");
+        } catch (JSONException e) {
+            Log.d("apply_search_result","ERROR: The response doesn't produce a JSON object as expected!");
+            getActivity().runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(null, "Invalid Response: Not a JSON", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+            );
+            e.printStackTrace();
+        }
+
+        if( answerJSON!=null && answerJSON.toString().contains("\"status\":\"ZERO_RESULTS\"") ) {
+            getActivity().runOnUiThread(
+                    new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(null, "ERROR: No results for given keyword!", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+            );
+            return;
+        }
+        Log.d("apply_search_result","JSON object is parsed successfully");
+        JSONObject answer_geojsoned = json_to_geojson( answerJSON );
+        Log.d("apply_search_result","Modified answer from JSON to GEO_JSON format!");
+        apply_result_layer(answer_geojsoned);
+        Log.d("MAP UPDATE","The GeoJSON object has been added to the map layer for display!");
     }
 
     void apply_result_layer(JSONObject geojson){
