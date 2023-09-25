@@ -30,7 +30,7 @@ public class TCPhelpers {
 
     public static ByteArrayOutputStream receiveBuffedBytesNoLimit(DataInputStream dis) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        byte[] buffer = new byte[1000]; // 1000 bytes has worked with no issue so far
+        byte[] buffer = new byte[1000]; // 1000 bytes has worked with no issue so far (if not use smaller buffer)
         int bytesRead;
         int total_bytes = 0;
         while ((bytesRead = dis.read(buffer)) != -1) {
@@ -46,5 +46,8 @@ public class TCPhelpers {
         }
         return baos;
     }
+
+    // TODO: Create the function to receive with limits (that is keep receiving until we reach the expected number of bytes)
+    // public static byte [] receiveExactBytesSmall
 
 }

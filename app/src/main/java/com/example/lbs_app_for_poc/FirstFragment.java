@@ -63,7 +63,7 @@ public class FirstFragment extends Fragment {
     }
 
     public void autofillDebug(){
-        this.LBSemIP_ET.setText("192.168.1.235");
+        this.LBSemIP_ET.setText("192.168.1.197");
         // this.LBSemIP_ET.setText("192.168.10.123");
         this.LBSemNAME_ET.setText("nodeA");
     }

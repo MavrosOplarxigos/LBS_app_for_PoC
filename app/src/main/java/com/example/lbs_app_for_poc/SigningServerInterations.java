@@ -110,7 +110,7 @@ public class SigningServerInterations {
             if (i >= SS_AFWD.length) {
                 throw new Exception("The size of the received data is too small. Couldn't get ENC_ANSWER");
             }
-            encAnsByteArray[i] = SS_AFWD[i];
+            encAnsByteArray[i-4] = SS_AFWD[i];
         }
         byte [] ANSWER = InterNodeCrypto.decryptWithKey(encAnsByteArray,my_key);
 
@@ -119,7 +119,7 @@ public class SigningServerInterations {
             if (i >= SS_AFWD.length) {
                 throw new Exception("The size of the received data is too small. Couldn't get the size fo the SS_QA_BYTE_ARRAY");
             }
-            signatureSSQAByteArray[i] = SS_AFWD[i];
+            signatureSSQAByteArray[i-(4+ENC_ANSWER_LENGTH)] = SS_AFWD[i];
         }
         int SIGNATURE_SS_QA_LEN = TCPhelpers.byteArrayToIntLittleEndian(signatureSSQAByteArray);
 
@@ -128,22 +128,40 @@ public class SigningServerInterations {
             if (i >= SS_AFWD.length) {
                 throw new Exception("The size of the received data is too small. Couldn't get the SS_QA_BYTE_ARRAY");
             }
-            SIGNATURE_SS_QA[i] = SS_AFWD[i];
+            SIGNATURE_SS_QA[i-(4+ENC_ANSWER_LENGTH+4)] = SS_AFWD[i];
         }
 
+        // We have the QUERY = APICallBytesClientQuery
+        // We have the ANSWER = ANSWER
+        // We can now verify the signature of the signing server
+        byte [] QAconcatenation = new byte[APICallBytesClientQuery.length + ANSWER.length];
+        System.arraycopy(APICallBytesClientQuery, 0, QAconcatenation, 0, APICallBytesClientQuery.length);
+        System.arraycopy(ANSWER, 0, QAconcatenation, APICallBytesClientQuery.length, ANSWER.length);
 
+        boolean SSsignatureValid = CryptoChecks.isSignedByCert(QAconcatenation, SIGNATURE_SS_QA, InterNodeCrypto.CA_cert);
+        if(!SSsignatureValid){
+            throw new Exception("The signature of the SS for the concatenation of the query and the answer is invalid");
+        }
 
+        // OK so now we have all the fields required to set the response fields
+        byte [][] response_fields = new byte[2][];
 
+        // [0]: the answer to the query encrypted with the querying peer key
+        // [1]: the signature of the RAW query CONCATENATED with the response with the signing server key (CA key)
 
+        byte [] ENC_ANSWER_FOR_PEER = null;
+        try {
+            ENC_ANSWER_FOR_PEER = InterNodeCrypto.encryptWithPeerKey(ANSWER,peer_key);
+        }
+        catch (Exception e){
+            Log.d("SERVING PEER ANSWER FORWARD","Could not sign the ANSWER with the peer public key!");
+            throw e;
+        }
 
+        response_fields [0] = ENC_ANSWER_FOR_PEER;
+        response_fields [1] = SIGNATURE_SS_QA;
 
-
-
-
-
-
-        return null;
-
+        return response_fields;
 
     }
 

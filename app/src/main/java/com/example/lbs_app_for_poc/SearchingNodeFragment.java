@@ -427,6 +427,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     }
 
                     // - restart the peer discover thread
+
                     // - use a countdown lock to check that indeed we have received a new answer form the P2P server
                     // - if the new peer array list is not null call for a second try (basically do what happens when we click the button over again)
                     // - call this function for second try (have a boolean to check that it is a second try)

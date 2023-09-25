@@ -182,7 +182,7 @@ public class ServingNodeQueryHandleThread extends Thread {
 
         // Since we have query now we can proceed with talking to the signing server to complete it
         // [0]: the answer to the query encrypted with the querying peer key
-        // [1]: the signature of the RAW query CONNCATENATED with the response with the signing server key (CA key)
+        // [1]: the signature of the RAW query CONCATENATED with the response with the signing server key (CA key)
         byte [][] ss_answer = null;
         try{
             ss_answer = SigningServerInterations.ProxyQuery(API_CALL_RAW_BYTES,my_cert,my_key,peer_cert);
@@ -192,20 +192,27 @@ public class ServingNodeQueryHandleThread extends Thread {
             return;
         }
 
+        int enc_ans_len = ss_answer[0].length;
+        byte [] enc_ans_len_bytes = TCPhelpers.intToByteArray(enc_ans_len);
+        int ssqa_len = ss_answer[1].length;
+        byte [] ssqa_len_bytes = TCPhelpers.intToByteArray(ssqa_len);
 
+        // Now that we have the response fields we should sent them back to the querying peer
+        try {
+            ByteArrayOutputStream baosServingPeerAnswerFWD = new ByteArrayOutputStream();
+            baosServingPeerAnswerFWD.write(enc_ans_len_bytes);
+            baosServingPeerAnswerFWD.write(ss_answer[0]);
+            baosServingPeerAnswerFWD.write(ssqa_len_bytes);
+            baosServingPeerAnswerFWD.write(ss_answer[1]);
+            byte [] ServingPeerAnswerFwd = baosServingPeerAnswerFWD.toByteArray();
+            dos.write(ServingPeerAnswerFwd);
+        }
+        catch (Exception e){
+            safe_exit("Could not finish the SERVING PEER ANSWER FWD phase",e,socket);
+            return;
+        }
 
-
-
-
-
-
-
-
-
-
-
-
-
+        Log.d("Serving Node Query Handle Thread","SUCCESS: Peer " + peer_name + " @ " + peerIP + " was serviced!");
     }
 
     public byte [] crypto_check_query(byte [][] fields) throws NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException {

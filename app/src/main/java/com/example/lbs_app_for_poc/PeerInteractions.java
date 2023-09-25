@@ -28,7 +28,9 @@ public class PeerInteractions {
 
     public static class PeerInteractionThread extends Thread{
 
-        public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC = 2000; // How much time do we wait for a peer to respond
+        // How much time do we wait for a peer to respond every time. We have to consider that it will talk to the signing server and that server will talk to the LBS server
+        // so realistically we should expect a descent amount of latency after we send the client query.
+        public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC = 5000;
         int index4AnswerStoring;
         InetAddress peerIP;
         int peerPort;
@@ -140,204 +142,87 @@ public class PeerInteractions {
             }
             Log.d(debug_tag_peer(),"SUCCESS: Client Query sent to serving peer " + peer_name + " @ " + peerIP  );
 
-            // 4.1) SERVER RESPONSE DECLARATION: RECEIVE THE RESPONSE SIZE IN BYTES
-            // [RESPONSE] | [RESPONSE SIZE IN BYTES]
+            // 4.1) SERVING PEER ANSWR FORWARD
+            // [ENC_ANS_LEN: 4] | [ENC_ANS] | [SSQA_LEN: 4] | [SSQA]
 
-            /*ByteArrayOutputStream baosServerResponseDeclaration;
-            try {
-                baosServerResponseDeclaration = new ByteArrayOutputStream();
-                byte[] bufferServerResponseDeclaration = new byte[1000];
-                int bytesReadServerResponseDeclaration;
-                int total_bytesServerResponseDeclaration = 0;
-                while( (bytesReadServerResponseDeclaration = dis.read(bufferServerResponseDeclaration)) != -1 ) {
-                    Log.d(debug_tag_peer(),"Now read " + bytesReadServerResponseDeclaration + " bytes!");
-                    baosServerResponseDeclaration.write(bufferServerResponseDeclaration, 0, bytesReadServerResponseDeclaration);
-                    total_bytesServerResponseDeclaration += bytesReadServerResponseDeclaration;
-                    if (bytesReadServerResponseDeclaration < bufferServerResponseDeclaration.length) {
-                        break; // The buffer is not filled up that means we have reached the EOF
-                    }
-                    if (total_bytesServerResponseDeclaration > TCPServerThread.max_transmission_cutoff) {
-                        Log.d(debug_tag_peer(),"The maximum transmission cutoff is reached in Server Response Declaration!");
-                        throw new IOException();
-                    }
-                }
-            } catch (IOException e) {
-                safe_exit("Could not receive server response declaration",e,s);
+            ByteArrayOutputStream baosSP_AFWD = null;
+            try{
+                baosSP_AFWD = TCPhelpers.receiveBuffedBytesNoLimit(dis);
+            }
+            catch (Exception e){
+                safe_exit("Error: Could not retrieve the response from the SERVING PEER ANSWER FWD phase",e,s);
                 return;
             }
+            byte [] SP_AFWD = baosSP_AFWD.toByteArray();
 
-            byte [] bytesServerResponseDeclartion = baosServerResponseDeclaration.toByteArray();
-            Log.d(debug_tag_peer(),"Received Server Response Declaration!");
-
-            // SEPARATING THE FIELDS OF SERVER RESPONSE DECLARATION
-
-            // First let's read the prefix RESPONSE
-            int ci = 0; // current index bytesServerResponseDeclaration
-            int tempci = ci;
-
-            // [RESPONSE]
-            ByteArrayOutputStream baosServerResponseDeclarationResponse = new ByteArrayOutputStream();
-            for(int i=ci;(i < bytesServerResponseDeclartion.length) && ((char)( bytesServerResponseDeclartion[i] ) != TCPServerThread.transmission_del);i++){
-                baosServerResponseDeclarationResponse.write( (byte) bytesServerResponseDeclartion[i] );
-                ci=i;
-            }
-            // check that the message has the prefix RESPONSE
-            if( !( "RESPONSE".equals( new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) ) ) ){
-                safe_exit("ERROR: The prefix of the received message is " + new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8),null,s);
-                return;
-            }
-            Log.d(debug_tag_peer(),"SUCCESS: the prefix of the received message from the intermediate node is " + new String(baosServerResponseDeclarationResponse.toByteArray(), StandardCharsets.UTF_8) );
-            ci++; // Now must be on delimiter
-            if( (char)( bytesServerResponseDeclartion[ci] ) != TCPServerThread.transmission_del ){
-                safe_exit("Expected " + TCPServerThread.transmission_del +" after the RESPONSE bytes. Found " + bytesServerResponseDeclartion[ci],null,s);
-                return;
-            }
-            ci++;
-
-            // Then let's read how many bytes the response will be
-            // [RESPONSE SIZE IN BYTES]
-            String ResponseSizeInBytesString = "";
-            for(int i=ci;(i< bytesServerResponseDeclartion.length) && ((char)( bytesServerResponseDeclartion[i] ) != TCPServerThread.transmission_del); i++){
-                ResponseSizeInBytesString += (char)( bytesServerResponseDeclartion[i] );
-                ci = i;
-            }
-            Log.d(debug_tag_peer(),"The ResponseSizeInBytesString is " + ResponseSizeInBytesString);
-            int ResponseSizeInBytes = Integer.parseInt(ResponseSizeInBytesString);
-
-            // 4.2) CLIENT DECLARATION ACCEPT
-            try {
-                dos.write("ACK".getBytes());
-                Log.d(debug_tag_peer(),"ACKNOWLEDGMENT OF SERVER RESPONSE DECLARATION SENT SUCCESSFULLY");
-            } catch (IOException e) {
-                safe_exit("Could not sent ACK to the server response declaration",e,s);
-                return;
-            }
-
-            // 4.3) SERVER RESPONSE: RECEIVE THE ACTUAL RESPONSE BYTES FROM THE SERVER
-            // [JSONObjectAnswerByteArraySize] | [JSONObjectAnswerByteArray] | [JSONObjectAnswerByteArraySigned]
-            // NOW BASED ON KNOWING HOW MUCH BYTES WE SHOULD EXPECT WE CAN READ THE ACTUAL RESPONSE
-
-            ByteArrayOutputStream baosServerResponse;
-            try {
-                baosServerResponse = new ByteArrayOutputStream();
-                byte[] bufferServerResponse = new byte[1000]; // we will attempt using a bigger buffer here
-                int bytesReadServerResponse;
-                int total_bytesServerResponse = 0;
-                int times_waited = 0;
-                while( total_bytesServerResponse < ResponseSizeInBytes ) {
-                    bytesReadServerResponse = dis.read(bufferServerResponse);
-                    total_bytesServerResponse += bytesReadServerResponse;
-                    if( (bytesReadServerResponse == -1) && (total_bytesServerResponse < ResponseSizeInBytes) ){
-                        if(times_waited == 0) {
-                            Log.d(debug_tag_peer(), "Waiting for bytes from intermediate node!");
-                        }
-                        if(times_waited == 100) {
-                            Log.d(debug_tag_peer(), "Waited more thatn 100 times for bytes to reach the client! " +
-                                    "So far we have read only " + total_bytesServerResponse + " bytes!");
-                        }
-                        times_waited++;
-                        continue;
-                    }
-                    Log.d(debug_tag_peer(),"Now read " + bytesReadServerResponse + " bytes!");
-                    baosServerResponse.write(bufferServerResponse, 0, bytesReadServerResponse);
-                    if (bytesReadServerResponse < bufferServerResponse.length) {
-                        Log.d(debug_tag_peer(),"A segment was read that had only " + bytesReadServerResponse + " bytes!" +
-                                " So far " + total_bytesServerResponse + "have been read!");
-                        if(total_bytesServerResponse < ResponseSizeInBytes){
-                            Log.d(debug_tag_peer(),"We won't brake the loop because not all of the expected bytes were read!");
-                            continue;
-                        }
-                        else {
-                            Log.d(debug_tag_peer(),"Since it seems that we have read all the bytes we will break the loop!");
-                            break; // The buffer is not filled up that means we have reached the EOF
-                        }
-                    }
-                    if (total_bytesServerResponse > TCPServerThread.max_transmission_cutoff) {
-                        Log.d(debug_tag_peer(),"ERROR: The maximum transmission cutoff is reached! We did not expect messages more than " + TCPServerThread.max_transmission_cutoff + " bytes!");
-                        throw new IOException();
-                    }
-                }
-            } catch (IOException e) {
-                safe_exit("Error when reading the Server Response",e,s);
-                return;
-            }
-            byte [] bytesServerResponse = baosServerResponse.toByteArray();
-            Log.d(debug_tag_peer(),"SUCCESS: Received ServerResponse. Size of byte array is " + bytesServerResponse.length);
-
-            // SEPARATING THE FIELDS
-            // [EncryptedJSONObjectAnswerByteArraySize] | [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
-            byte [][] fieldsServerResponse = new byte[2][]; // [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
-            ci = 0; // current index bytesServerResponse
-            tempci = ci;
-
-            // EncryptedJSONObjectAnswerByteArraySize
-            String EncryptedJSONObjectAnswerByteArraySizeString = "";
-            for(int i=ci;(char)( bytesServerResponse[i] ) != TCPServerThread.transmission_del; i++){
-                EncryptedJSONObjectAnswerByteArraySizeString += (char)( bytesServerResponse[i] );
-                ci = i;
-            }
-            Log.d(debug_tag_peer(),"The EncryptedJSONObjectAnswerByteArraySizeString is " + EncryptedJSONObjectAnswerByteArraySizeString);
-            int EncryptedJSONObjectAnswerByteArraySize = Integer.parseInt(EncryptedJSONObjectAnswerByteArraySizeString);
-
-            ci++; // Now must be on delimiter
-            if( (char)(bytesServerResponse[ci]) != TCPServerThread.transmission_del ){
-                safe_exit("Expected " + TCPServerThread.transmission_del +" after the server response json object ansewr bytes array size. Found " + bytesServerResponse[ci],null,s);
-                return;
-            }
-            ci++;
-
-            // EncryptedJSONObjectAnswerByteArray
-            tempci = ci;
-            ByteArrayOutputStream baosServerResponseJSONObjectAnswerByteArray = new ByteArrayOutputStream();
-            for(int i=ci;i<ci+EncryptedJSONObjectAnswerByteArraySize;i++){
-                baosServerResponseJSONObjectAnswerByteArray.write((byte)bytesServerResponse[i]);
-                tempci = i;
-            }
-            fieldsServerResponse[0] = baosServerResponseJSONObjectAnswerByteArray.toByteArray();
-            ci = tempci;
-
-            ci++; // Now must be on delimiter
-            if( (char)(bytesServerResponse[ci]) != TCPServerThread.transmission_del ){
-                safe_exit("Expected " + TCPServerThread.transmission_del +" after the server response json object ansewr bytes. Found " + bytesServerResponse[ci],null,s);
-                return;
-            }
-            ci++;
-
-            // JSONObjectAnswerByteArraySigned
-            ByteArrayOutputStream baosServerResponseJSONObjectAnswerByteArraySigned = new ByteArrayOutputStream();
-            for(int i=ci;i< bytesServerResponse.length;i++){
-                baosServerResponseJSONObjectAnswerByteArraySigned.write((byte)(bytesServerResponse[i]));
-            }
-            fieldsServerResponse[1] = baosServerResponseJSONObjectAnswerByteArraySigned.toByteArray();
-
-            Log.d(debug_tag_peer(),"SUCCESS: The response has been received by the intermediate node! Now performing checks!");
-
-            // Client: Success/Failure ← Verpub_server(Er,Sr)
-            // Check that the JSON array is indeed signed by the peer server
-            try {
-                if( !CryptoChecks.isSignedByCert(fieldsServerResponse[0],fieldsServerResponse[1],this.peer_cert) ){
-                    safe_exit("ERROR: The received response signature is INCORRECT!",null,s);
+            // Parse the response
+            byte [] encAnsLenByteArray = new byte[4];
+            for(int i=0;i<4;i++){
+                if(i >= SP_AFWD.length){
+                    safe_exit("Error: The serving peer answer is too small. Could not get encAnsLenByteArray.",null,s);
                     return;
                 }
-            } catch (Exception e) {
-                safe_exit("ERROR: Failure on the cryptographic checks on Server Response",e,s);
-                return;
+                encAnsLenByteArray[i] = SP_AFWD[i];
             }
-            Log.d(debug_tag_peer(),"SUCCESS: The received response's signature is correct!");
+            int ENC_ANS_LEN = TCPhelpers.byteArrayToIntLittleEndian(encAnsLenByteArray);
 
-            // Now we will decrypt the encrypted JSON object
-            byte [] decryptedJSON;
+            byte [] encAns = new byte[ENC_ANS_LEN];
+            for(int i=4;i<4+ENC_ANS_LEN;i++){
+                if(i >= SP_AFWD.length){
+                    safe_exit("Error: The serving peer answer is too small. Could not get ENC ANS.",null,s);
+                    return;
+                }
+                encAns[i-4] = SP_AFWD[i];
+            }
+            byte [] ANSWER = null;
             try {
-                decryptedJSON = InterNodeCrypto.decryptWithKey(fieldsServerResponse[0],this.my_key); // we decrypt with the pseudo key
-            } catch (Exception e) {
-                safe_exit("ERROR: Decrypting the server response with our own key failure!",e,s);
+                ANSWER = InterNodeCrypto.decryptWithKey(encAns, my_key);
+            }
+            catch (Exception e){
+                safe_exit("Error: Could not decrytp the answer with our own private key!",e,s);
+            }
+
+            // Now off to check the signature
+            byte [] SSQALenByteArray = new byte[4];
+            for(int i=4+ENC_ANS_LEN;i<4+ENC_ANS_LEN+4;i++){
+                if(i >= SP_AFWD.length){
+                    safe_exit("Error: The serving peer answer is too small. Could not get SSQALenByteArray.",null,s);
+                    return;
+                }
+                SSQALenByteArray[i-(4+ENC_ANS_LEN)] = SP_AFWD[i];
+            }
+            int SSQA_LEN = TCPhelpers.byteArrayToIntLittleEndian(SSQALenByteArray);
+
+            byte [] SSQA = new byte[SSQA_LEN];
+            for(int i=4+ENC_ANS_LEN+4;i<4+ENC_ANS_LEN+4+SSQA_LEN;i++){
+                if(i >= SP_AFWD.length){
+                    safe_exit("Error: The serving peer answer is too small. Could not get SSQA.",null,s);
+                    return;
+                }
+                SSQA[i-(4+ENC_ANS_LEN+4)] = SP_AFWD[i];
+            }
+
+            // OK now we should check the concatenation
+            byte [] QAconcatenation = new byte[APICallBytesClientQuery.length + ANSWER.length];
+            System.arraycopy(APICallBytesClientQuery,0,QAconcatenation,0,APICallBytesClientQuery.length);
+            System.arraycopy(ANSWER,0,QAconcatenation,0,ANSWER.length);
+
+            boolean SSsignatureValid = true;
+            try {
+                SSsignatureValid = CryptoChecks.isSignedByCert(QAconcatenation, SSQA, InterNodeCrypto.CA_cert);
+            }
+            catch (Exception e) {
+                safe_exit("Error: Could not check the signature of the SS on the concatenated QA",e,s);
                 return;
             }
-            Log.d(debug_tag_peer(),"SUCCESS: The decryption of the response has finished! The response is stored in index " + index4AnswerStoring);
-            SearchingNodeFragment.peerResponseDecJson[index4AnswerStoring] = decryptedJSON;
 
+            if(!SSsignatureValid){
+                safe_exit("Error: The signature on the concatenated QA from the SS is not valid!",null,s);
+                return;
+            }
 
-            */
+            Log.d("Peer Interaction","SUCCESS: send query and received/verified answer with " + peer_name + " @ " + peerIP);
+            SearchingNodeFragment.peerResponseDecJson[index4AnswerStoring] = ANSWER;
 
             // unlocking the response for the collection thread
             safe_close_socket(s);
