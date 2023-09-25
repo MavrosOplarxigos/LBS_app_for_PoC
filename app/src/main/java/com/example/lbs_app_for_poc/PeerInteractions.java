@@ -143,7 +143,7 @@ public class PeerInteractions {
             // 4.1) SERVER RESPONSE DECLARATION: RECEIVE THE RESPONSE SIZE IN BYTES
             // [RESPONSE] | [RESPONSE SIZE IN BYTES]
 
-            ByteArrayOutputStream baosServerResponseDeclaration;
+            /*ByteArrayOutputStream baosServerResponseDeclaration;
             try {
                 baosServerResponseDeclaration = new ByteArrayOutputStream();
                 byte[] bufferServerResponseDeclaration = new byte[1000];
@@ -335,6 +335,10 @@ public class PeerInteractions {
             }
             Log.d(debug_tag_peer(),"SUCCESS: The decryption of the response has finished! The response is stored in index " + index4AnswerStoring);
             SearchingNodeFragment.peerResponseDecJson[index4AnswerStoring] = decryptedJSON;
+
+
+            */
+
             // unlocking the response for the collection thread
             safe_close_socket(s);
             SearchingNodeFragment.mutexPeerResponseDecJson[index4AnswerStoring].unlock();

@@ -39,7 +39,7 @@ public class P2PRelayServerInteractions {
 
         LBSEntitiesConnectivity lbsEntitiesConnectivity;
         public static final int QUERY_INTERVAL_MSEC = 20 * 1000;
-        public static final int QUERY_SOCKET_TIMEOUT = 1000;
+        public static final int QUERY_SOCKET_TIMEOUT = 5000;
         public boolean explicit_search_request; // this is not static so that the previous instances of the thread kill themselves explicitly
 
         public PeerDiscoveryThread(LBSEntitiesConnectivity lbsEC){
@@ -59,7 +59,7 @@ public class P2PRelayServerInteractions {
                     Socket PeerDiscoverySocket = new Socket();
                     Log.d("Peer Discovery Thread: ", "Socket constructed");
                     PeerDiscoverySocket.connect(new InetSocketAddress(lbsEntitiesConnectivity.ENTITIES_MANAGER_IP, lbsEntitiesConnectivity.P2P_RELAY_QUERY_PORT), QUERY_SOCKET_TIMEOUT);
-                    Log.d("Peer Discovery Thread: ", "Socket constructed");
+                    Log.d("Peer Discovery Thread: ", "Connected to the query server!");
                     while(true){
                         if(explicit_search_request){
                             Log.d("Peer Discovery Thread (Old): ", "Successful stop by searching node fragment!");
@@ -77,7 +77,7 @@ public class P2PRelayServerInteractions {
 
                         SearchingNodeFragment.ServingPeerArrayList = lista;
 
-                        if(lista != null) {
+                        if(lista != null && SearchingNodeFragment.ServingPeerArrayList.size() != 0 ) {
                             Log.d("Peer Discovery Thread: ", "Received & saved NEW Peer List: ");
                             LoggingFragment.mutexTvdAL.lock();
                             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("NEW PEER LIST: ",Color.CYAN));
@@ -241,7 +241,7 @@ public class P2PRelayServerInteractions {
 
         LBSEntitiesConnectivity lbsEC;
         public static final int AVAILABILITY_DISCLOSURE_INTERVAL_MSEC = 20 * 1000;
-        public static final int AVAILABILITY_SOCKET_TIMEOUT = 1000;
+        public static final int AVAILABILITY_SOCKET_TIMEOUT = 5000;
         public String last_disclosure;
 
         public AvailabilityThread(LBSEntitiesConnectivity lbsEC){

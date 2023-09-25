@@ -6,8 +6,21 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 
 public class TCPhelpers {
+
+    public static int byteArrayToIntLittleEndian(byte[] byteArray) {
+        ByteBuffer buffer = ByteBuffer.wrap(byteArray);
+        buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        return buffer.getInt();
+    }
+
+    public static int byteArrayToIntBigEndian(byte[] byteArray) {
+        ByteBuffer buffer = ByteBuffer.wrap(byteArray);
+        buffer.order(java.nio.ByteOrder.BIG_ENDIAN);
+        return buffer.getInt();
+    }
 
     public static byte[] intToByteArray(int number) {
         ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);

@@ -181,14 +181,18 @@ public class ServingNodeQueryHandleThread extends Thread {
         }
 
         // Since we have query now we can proceed with talking to the signing server to complete it
+        // [0]: the answer to the query encrypted with the querying peer key
+        // [1]: the signature of the RAW query CONNCATENATED with the response with the signing server key (CA key)
         byte [][] ss_answer = null;
         try{
-            ss_answer = SigningServerInterations.ProxyQuery(API_CALL_RAW_BYTES,my_cert,my_key);
+            ss_answer = SigningServerInterations.ProxyQuery(API_CALL_RAW_BYTES,my_cert,my_key,peer_cert);
         }
         catch (Exception e){
             safe_exit("Could not retrieve answer from signing server!",e,socket);
             return;
         }
+
+
 
 
 
