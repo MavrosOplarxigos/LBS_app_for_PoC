@@ -30,6 +30,8 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.SignatureException;
 import java.util.ArrayList;
+import java.util.Objects;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
 import javax.crypto.Cipher;
@@ -94,6 +96,18 @@ public class FirstFragment extends Fragment {
             public void onClick(View view) {
 
                 try {
+                    if (!CryptoChecks.isPythonStyleEncryptAndDecryptWorking(InterNodeCrypto.my_cert,InterNodeCrypto.my_key)) {
+                        Toast.makeText(getActivity(), "Received Credentials NOT PASSING NEW crypto checks", Toast.LENGTH_SHORT);
+                        return;
+                    }
+                }
+                catch (Exception e){
+                    Log.d("CREDSCHECK","Could not check my credentials!");
+                    e.printStackTrace();
+                    Toast.makeText(getActivity(), "Received Credentials NOT PASSING NEW crypto checks", Toast.LENGTH_SHORT);
+                }
+
+                try {
                     lbsEC.writeObjectFile(); // We save the current configuration for later usages of the application
                 }
                 catch (Exception e){
@@ -112,6 +126,7 @@ public class FirstFragment extends Fragment {
                 // 7) Thread for SERVING peers that communicate their requests to us
                 // after we have chosen a port we can now start the thread for listening for client querying node requests
                 TCPServerControlClass.AcceptThread = new TCPServerControlClass.TCPServerAcceptingThread();
+                TCPServerControlClass.AcceptThread.start();
 
                 // DONE: Start a thread for disclosing our IP address and port which is for accepting incoming connections from querying nodes
                 // to the P2P AVAILABILITY server in a constant time interval
@@ -121,6 +136,9 @@ public class FirstFragment extends Fragment {
                 // DONE: 6) Thread for PEER DISCOVERY (which runs once our records are either not fresh (loops itself), non-existent or irresponsive 1 time)
                 SearchingNodeFragment.lbsEC4PeerDiscRestart = lbsEC; // for PEER DISCOVERY thread restarting
                 SearchingNodeFragment.ServingPeerArrayList = new ArrayList<SearchingNodeFragment.ServingPeer>();
+                for (int i = 0; i < SearchingNodeFragment.MAX_PEER_RESPONSES; i++) {
+                    SearchingNodeFragment.mutexPeerResponseDecJson[i] = new ReentrantLock();
+                }
                 P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC);
                 P2PRelayServerInteractions.qThread.start();
 
@@ -419,7 +437,7 @@ public class FirstFragment extends Fragment {
     }
 
     public void startLoadingAnimation(String x){
-        if(x == "services") {
+        if(Objects.equals(x, "services")) {
             ImageView iv = binding.RemoteServicesOnlineSTATUS;
             iv.post(
                     new Runnable() {
@@ -433,7 +451,7 @@ public class FirstFragment extends Fragment {
                     }
             );
         }
-        if(x == "credentials") {
+        if(Objects.equals(x, "credentials")) {
             ImageView iv = binding.CredentialsLoadedSTATUS;
             iv.post(
                     new Runnable() {

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
@@ -31,6 +32,7 @@ public class PeerInteractions {
         // How much time do we wait for a peer to respond every time. We have to consider that it will talk to the signing server and that server will talk to the LBS server
         // so realistically we should expect a descent amount of latency after we send the client query.
         public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC = 5000;
+        public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC_HELLO = 1000;
         int index4AnswerStoring;
         InetAddress peerIP;
         int peerPort;
@@ -66,6 +68,18 @@ public class PeerInteractions {
                 safe_exit("ERROR: Socket connect failure unrelated to timeout!",e,s);
                 return;
             }
+
+            // setting pre-hello socket timeout
+            try {
+                s.setSoTimeout(SERVING_PEER_CONNECTION_TIMEOUT_MSEC_HELLO);
+            } catch (SocketException e) {
+                LoggingFragment.mutexTvdAL.lock();
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("COULD NOT set client socket timeout pre HELLO!", Color.RED) );
+                LoggingFragment.mutexTvdAL.unlock();
+                safe_exit("ERROR: Could not set socket timeout!",null,s);
+                return;
+            }
+
             // HELLO phase
             boolean introductionsDone = configure_peer_connectivity(s);
             if(!introductionsDone){
@@ -78,6 +92,17 @@ public class PeerInteractions {
             LoggingFragment.mutexTvdAL.lock();
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello SUCCESS with: " + peer_name + "@ " + peerIP, Color.GREEN ) );
             LoggingFragment.mutexTvdAL.unlock();
+
+            // setting larger socket timeout
+            try {
+                s.setSoTimeout(SERVING_PEER_CONNECTION_TIMEOUT_MSEC);
+            } catch (SocketException e) {
+                LoggingFragment.mutexTvdAL.lock();
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("COULD NOT set client socket timeout for AFTER hello phase with peer!", Color.RED) );
+                LoggingFragment.mutexTvdAL.unlock();
+                safe_exit("ERROR: Could not set socket timeout!",null,s);
+                return;
+            }
 
             DataInputStream dis = null;
             DataOutputStream dos = null;

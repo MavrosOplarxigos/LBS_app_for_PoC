@@ -14,7 +14,9 @@ import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.SocketException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
@@ -69,15 +71,13 @@ public class P2PRelayServerInteractions {
                         Log.d("Peer Discovery Thread","Sent Client Hello");
 
                         // now we can receive the peer list [ [num of records] [ IP_1 , port_1 ] .. [ IP_1 , port_1 ] ]
-                        ArrayList<SearchingNodeFragment.ServingPeer> lista = null;
-                        lista = new ArrayList<SearchingNodeFragment.ServingPeer>(peer_list(PeerDiscoverySocket));
+                        ArrayList<SearchingNodeFragment.ServingPeer> lista;
+                        lista = peer_list(PeerDiscoverySocket);
 
                         // mutext for writing the newly received list of peers
                         SearchingNodeFragment.mutextServingPeerArrayList.lock();
-
-                        SearchingNodeFragment.ServingPeerArrayList = lista;
-
-                        if(lista != null && SearchingNodeFragment.ServingPeerArrayList.size() != 0 ) {
+                        if( lista != null && lista.size()!=0 ) {
+                            SearchingNodeFragment.ServingPeerArrayList = new ArrayList<SearchingNodeFragment.ServingPeer>(lista);
                             Log.d("Peer Discovery Thread: ", "Received & saved NEW Peer List: ");
                             LoggingFragment.mutexTvdAL.lock();
                             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("NEW PEER LIST: ",Color.CYAN));
@@ -90,9 +90,10 @@ public class P2PRelayServerInteractions {
                             LoggingFragment.mutexTvdAL.unlock();
                         }
                         else{
+                            SearchingNodeFragment.ServingPeerArrayList = new ArrayList<SearchingNodeFragment.ServingPeer>();
                             Log.d("Peer Discovery Thread: ", "The received peer list is empty and thus now we have no peers!");
                             LoggingFragment.mutexTvdAL.lock();
-                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("New peer list EMPTY", Color.RED));
+                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("NEW PEER LIST EMPTY", Color.RED));
                             LoggingFragment.mutexTvdAL.unlock();
                         }
                         SearchingNodeFragment.mutextServingPeerArrayList.unlock();
@@ -122,80 +123,118 @@ public class P2PRelayServerInteractions {
             DataInputStream dis = new DataInputStream(socket.getInputStream());
 
             // read status code
-            byte [] StatusCodeByteArray = buffRead(6,dis);
+            byte [] StatusCodeByteArray = TCPhelpers.buffRead(6,dis);
             String StatusCode = new String(StatusCodeByteArray, StandardCharsets.UTF_8);
 
-            if(StatusCode == "TOOFRQ"){
-                Log.d("Peer discovery: ","We have asked for new peers very frequently. That is below QUERY_MIN_INTERVAL_TOLERANCE_SECONDS");
+            Log.d("PDISC","The received status code is " + StatusCode);
+
+            if(StatusCode.equals("TOOFRQ")){
+                Log.d("PDISC","We have asked for new peers very frequently. That is below QUERY_MIN_INTERVAL_TOLERANCE_SECONDS");
+                LoggingFragment.mutexTvdAL.lock();
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("OUR PEER REQUESTS ARE TOO FREQUENT", Color.RED));
+                LoggingFragment.mutexTvdAL.unlock();
                 return null;
             }
 
-            if(StatusCode == "EINVLD"){
-                Log.d("Peer discovery: ","We have asked for new peers EARLY and the P2P relay server thinks that we should still have received service!");
+            if(StatusCode.equals("EINVLD")){
+                Log.d("PDISC","We have asked for new peers EARLY and the P2P relay server thinks that we should still have received service!");
+                LoggingFragment.mutexTvdAL.lock();
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("OUR EARLY PEER REQUEST IS UNACCEPTABLE", Color.RED));
+                LoggingFragment.mutexTvdAL.unlock();
                 return null;
             }
 
-            if(StatusCode == "EMPTYR"){
-                Log.d("Peer discovery: ","The remote server thinks that our query is legit but has no records to send back to us");
+            if(StatusCode.equals("EMPTYR")){
+                Log.d("PDISC","The remote server thinks that our query is legit but has no records to send back to us");
+                LoggingFragment.mutexTvdAL.lock();
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("P2P SERVER: NO PEERS TO RETURN", Color.RED));
+                LoggingFragment.mutexTvdAL.unlock();
                 return null;
             }
 
-            if(StatusCode == "OKRECV") {
-                Log.d("Peer discovery: ", "SUCCESS: The remote server has records to send to us!");
-                // receive the records
+            if(StatusCode.equals("OKRECV")) {
 
-                byte [] numOfRecordsByteArray = buffRead(4,dis);
+                Log.d("PDISC", "SUCCESS: The remote server has records to send to us!");
+
+                byte [] numOfRecordsByteArray = TCPhelpers.buffRead(4,dis);
                 int numOfRecords = byteArrayToInt(numOfRecordsByteArray);
 
-                Log.d("Peer discovery: ", "We are expecting " + numOfRecords + " records from remote server!");
-
-                byte [] sizeOfEncRecordsByteArray = buffRead(4,dis);
+                byte [] sizeOfEncRecordsByteArray = TCPhelpers.buffRead(4,dis);
                 int sizeOfEncRecords = byteArrayToInt(sizeOfEncRecordsByteArray);
 
-                Log.d("Peer discovery: ", "The size of the encrypted records byte array is " + sizeOfEncRecords);
+                byte [] ENC_records_byte_array = TCPhelpers.buffRead(sizeOfEncRecords,dis);
+                byte [] recordsByteArray = null;
 
-                byte [] ENC_records_byte_array = buffRead(sizeOfEncRecords,dis);
-                byte [] recordsByteArray = InterNodeCrypto.decryptWithOwnKey(ENC_records_byte_array);
-
-                if(numOfRecords * 4 * 2 != recordsByteArray.length){
-                    Log.d("Peer discovery: ", "Error: since numOfRecords = " + numOfRecords + " the expected size of the records Byte" +
-                            "Array is " + (4*2*numOfRecords) + " but we get " + recordsByteArray.length);
+                try {
+                    recordsByteArray = InterNodeCrypto.decryptWithOwnKey(ENC_records_byte_array);
+                }
+                catch(Exception e){
+                    Log.d("PDISC","Could not decrypt the peer solicitation!");
+                    e.printStackTrace();
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("PEER SOLICITATION COULD NOT BE DECRYPTED", Color.RED));
+                    LoggingFragment.mutexTvdAL.unlock();
                     return null;
                 }
+
+                Log.d("PDISC","NUMBER_OF_RECORDS = " + numOfRecords);
+                Log.d("PDISC","DEC_RECORDS_BYTE_ARRAY_SIZE = " + recordsByteArray.length);
+                Log.d("PDISC","DEC_RECORDS_BYTE_ARRAY = " + TCPhelpers.byteArrayToDecimalString(recordsByteArray) );
+                Log.d("PDISC","ENC_BYTE_ARRAY_LEN = " + ENC_records_byte_array.length);
+                Log.d("PDISC","ENC_BYTE_ARRAY = " + TCPhelpers.byteArrayToDecimalString(ENC_records_byte_array) );
+                Log.d("PDISC","ENC_BYTE_ARRAY_len_adv = " + sizeOfEncRecords);
+
+                /*
+                // INVALID CHECK: BECAUSE OF PADDING TO 190 BYTES
+                if(numOfRecords * 4 * 2 != recordsByteArray.length){
+                    Log.d("PDISC", "Error: since numOfRecords = " + numOfRecords + " the expected size of the records Byte" +
+                            "Array is " + (4*2*numOfRecords) + " but we get " + recordsByteArray.length);
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("P2P SERVER: INCORRECT PEER LIST STRUCTURE", Color.RED));
+                    LoggingFragment.mutexTvdAL.unlock();
+                    return null;
+                }
+                */
 
                 ArrayList<SearchingNodeFragment.ServingPeer> ANS = new ArrayList<SearchingNodeFragment.ServingPeer>();
 
                 for(int i=0;i<numOfRecords;i++){
 
-                    int ip_index = i*2; // the 4-byte block index
+                    int ip_index = i*2; // the 4-byte block index // 2 because 2 octets for each records
                     int port_index = i*2 + 1;
 
                     byte [] ip_byte_array = new byte[4];
                     for(int j=(ip_index*4);(j<ip_index*4+4);j++){
                         ip_byte_array[j-(ip_index*4)] = recordsByteArray[j];
                     }
+                    TCPhelpers.reverseByteArray(ip_byte_array); // Endianess
+
                     byte [] port_byte_array = new byte [4];
                     for(int j=(port_index*4);(j<port_index*4+4);j++){
                         port_byte_array[j-port_index*4] = recordsByteArray[j];
                     }
 
+                    Log.d("PDISC","PORT BYTE ARRAY BEFORE REVERSE: " + TCPhelpers.byteArrayToDecimalString(port_byte_array) );
+                    TCPhelpers.reverseByteArray(port_byte_array);
+                    Log.d("PDISC","PORT BYTE ARRAY AFTER REVERSE: " + TCPhelpers.byteArrayToDecimalString(port_byte_array) );
+
                     int IP_value = byteArrayToInt(ip_byte_array);
-                    int Port_value = byteArrayToInt(port_byte_array);
+                    int Port_value = byteArrayToIntBigEndian(port_byte_array);
                     InetAddress IP_address = InetAddress.getByAddress(ip_byte_array);
 
-                    Log.d("Peer disovery: ","Received peer " + IP_address.getHostAddress() + ":" + Port_value);
+                    Log.d("PDISC","Received peer " + IP_address.getHostAddress() + ":" + Port_value);
 
                     SearchingNodeFragment.ServingPeer servingPeer = new SearchingNodeFragment.ServingPeer(IP_address,Port_value);
                     ANS.add(servingPeer);
 
                 }
 
-                Log.d("Peer discovery: ","The list of peers has parsed successfully");
+                Log.d("PDISC","The list of peers has parsed successfully");
                 return ANS;
 
             }
 
-            Log.d("Peer discovery: ","There received status code from the remote server makes no sense!");
+            Log.d("PDISC","There received status code from the remote server makes no sense!");
             return null;
         }
 
@@ -205,34 +244,10 @@ public class P2PRelayServerInteractions {
             return buffer.getInt();
         }
 
-        public static byte [] buffRead(int numOfBytes, DataInputStream dis) throws IOException {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            int totalBytesRead = 0;
-            while(true){
-                int BytesLeft2Read = numOfBytes - totalBytesRead;
-                int bufferSize = Math.min(100,BytesLeft2Read); // We read at most 100 bytes every time
-                if (bufferSize != 100) {
-                    Log.d("BuffRead", "Size now is " + bufferSize + " and BytesLeft2Read = " + BytesLeft2Read + " out of " + numOfBytes );
-                }
-                byte [] buffer = new byte[bufferSize];
-                int tempBytesRead = dis.read(buffer);
-                if(tempBytesRead!=bufferSize) {
-                    if( tempBytesRead < bufferSize ){
-                        // If they are less maybe we are still to receive them
-                        Log.d("BuffRed","WARNING: We read less than what we expected!");
-                    }
-                    else {
-                        throw new RuntimeException();
-                    }
-                }
-                totalBytesRead += tempBytesRead;
-                baos.write(buffer,0,tempBytesRead);
-                if(totalBytesRead == numOfBytes){
-                    break;
-                }
-            }
-            byte [] readByteArray = baos.toByteArray();
-            return readByteArray;
+        public static int byteArrayToIntBigEndian(byte[] byteArray) {
+            ByteBuffer buffer = ByteBuffer.wrap(byteArray);
+            buffer.order(ByteOrder.BIG_ENDIAN);
+            return buffer.getInt();
         }
 
     }
@@ -331,7 +346,7 @@ public class P2PRelayServerInteractions {
 
     }
 
-    public static String send_availability(Socket socket) throws IOException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException {
+    public static String send_availability(Socket socket) throws IOException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException, InvalidAlgorithmParameterException {
 
         DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
 

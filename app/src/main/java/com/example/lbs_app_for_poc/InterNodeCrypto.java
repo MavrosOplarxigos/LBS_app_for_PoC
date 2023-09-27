@@ -11,6 +11,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.NoSuchAlgorithmException;
@@ -23,6 +24,7 @@ import java.security.cert.CertificateFactory;
 import java.security.cert.CertificateParsingException;
 import java.security.cert.X509Certificate;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.MGF1ParameterSpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -34,6 +36,8 @@ import javax.crypto.Cipher;
 import javax.crypto.ExemptionMechanismException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import javax.crypto.spec.OAEPParameterSpec;
+import javax.crypto.spec.PSource;
 
 /*
 Generating pseudonymous certificates:
@@ -237,18 +241,18 @@ public class InterNodeCrypto {
         return result;
     }
 
-    public static byte [] encryptWithPeerKey(byte [] input, X509Certificate peer_cert) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    public static byte [] encryptWithPeerKey(byte [] input, X509Certificate peer_cert) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
 
         // RSA-OAEP / SHA-256 hashing / MGF1 mask generation
         // PKCS#1 v2.1 (RSA Cryptography Standard) by RSA Laboratories
         // RFC 8017 (PKCS #1: RSA Cryptography Specifications) published by the Internet Engineering Task Force (IETF).
 
         Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
-        cipher.init(Cipher.ENCRYPT_MODE, peer_cert.getPublicKey() );
+        cipher.init(Cipher.ENCRYPT_MODE, peer_cert.getPublicKey());
 
         // Determine the maximum block size for encryption
         int blockSize = cipher.getBlockSize();
-        Log.d("RSA_encyption_block_size","size = " + blockSize);
+        Log.d("CRYPTOBLOCKS","The ENCRYPT block size is " + blockSize);
 
         // Calculate the size of the output array
         int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);
@@ -271,43 +275,30 @@ public class InterNodeCrypto {
 
     }
 
-    public static byte [] decryptWithOwnKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
-
-        // Create the RSA cipher with OAEP padding
-        Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
-        cipher.init(Cipher.DECRYPT_MODE, InterNodeCrypto.my_key);
-
-        // Determine the maximum block size for decryption
-        int blockSize = cipher.getBlockSize();
-
-        // Calculate the size of the output array
-        int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);
-        byte[] dec_data = new byte[outputSize];
-
-        // Decrypt block by block
-        int inputOffset = 0;
-        int outputOffset = 0;
-        while (inputOffset < input.length) {
-            int inputLength = Math.min(blockSize, input.length - inputOffset);
-            byte[] inputBlock = new byte[inputLength];
-            System.arraycopy(input, inputOffset, inputBlock, 0, inputLength);
-            byte[] decryptedBlock = cipher.doFinal(inputBlock);
-            System.arraycopy(decryptedBlock, 0, dec_data, outputOffset, decryptedBlock.length);
-            inputOffset += blockSize;
-            outputOffset += decryptedBlock.length;
-        }
-
-        return dec_data;
+    public static byte [] decryptWithOwnKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
+        return decryptWithKey(input,my_key);
     }
 
-    public static byte [] decryptWithKey(byte [] input, PrivateKey key_given) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException {
+    public static byte [] decryptWithKey(byte [] input, PrivateKey key_given) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
 
         // Create the RSA cipher with OAEP padding
         Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
+        /*OAEPParameterSpec oaepParams = new OAEPParameterSpec(
+                "SHA-256",  // Hash algorithm for OAEP
+                "MGF1",     // Mask Generation Function
+                MGF1ParameterSpec.SHA256,
+                PSource.PSpecified.DEFAULT
+        );
+        // OAEP parameters with SHA-256 and MGF1 padding
+        Log.d("OAEPdefault","Digest = " + OAEPParameterSpec.DEFAULT.getDigestAlgorithm());
+        Log.d("OAEPdefault","MaskGeneration = " + OAEPParameterSpec.DEFAULT.getMGFAlgorithm());
+        Log.d("OAEPdefault","MaskGenerationParams = " + OAEPParameterSpec.DEFAULT.getMGFParameters().toString() );
+        Log.d("OAEPdefault","Psource = " + OAEPParameterSpec.DEFAULT.getPSource().toString() );*/
         cipher.init(Cipher.DECRYPT_MODE, key_given);
 
         // Determine the maximum block size for decryption
         int blockSize = cipher.getBlockSize();
+        Log.d("CRYPTOBLOCKS","The DECRYPT block size is " + blockSize);
 
         // Calculate the size of the output array
         int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);

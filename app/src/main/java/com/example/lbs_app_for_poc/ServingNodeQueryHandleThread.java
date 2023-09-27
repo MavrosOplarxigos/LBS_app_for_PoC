@@ -11,6 +11,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
@@ -56,7 +57,7 @@ public class ServingNodeQueryHandleThread extends Thread {
     public ServingNodeQueryHandleThread(Socket socket){
         this.socket = socket;
         LoggingFragment.mutexTvdAL.lock();
-        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepted Service Request from " + this.socket.getInetAddress().getHostAddress() , Color.YELLOW ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepted Service Request from " + this.socket.getInetAddress().getHostAddress() , Color.MAGENTA ) );
         LoggingFragment.mutexTvdAL.unlock();
         peerIP = socket.getInetAddress().getHostName();
         transmission_del = TCPServerControlClass.transmission_del;
@@ -215,7 +216,7 @@ public class ServingNodeQueryHandleThread extends Thread {
         Log.d("Serving Node Query Handle Thread","SUCCESS: Peer " + peer_name + " @ " + peerIP + " was serviced!");
     }
 
-    public byte [] crypto_check_query(byte [][] fields) throws NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException {
+    public byte [] crypto_check_query(byte [][] fields) throws NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException, InvalidAlgorithmParameterException {
         // Get raw query
         byte [] raw_query = InterNodeCrypto.decryptWithKey(fields[0],my_key);
         // Check signature

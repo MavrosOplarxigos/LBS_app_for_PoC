@@ -78,7 +78,7 @@ import javax.net.ssl.HttpsURLConnection;
 
 public class SearchingNodeFragment extends Fragment implements OnMapReadyCallback {
 
-    private static final int MAX_PEER_RESPONSES = 10;
+    public static final int MAX_PEER_RESPONSES = 10;
     private FragmentSecondBinding binding;
     private MapView mMapView;
     private GoogleMap mMap=null;
@@ -96,7 +96,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
     // The bytes arrays for the responses in case of peer querying
     public static byte [][] peerResponseDecJson = new byte[MAX_PEER_RESPONSES][];
-    public static final Lock [] mutexPeerResponseDecJson = new ReentrantLock[MAX_PEER_RESPONSES];
+    public static Lock [] mutexPeerResponseDecJson = new ReentrantLock[MAX_PEER_RESPONSES];
     public static CountDownLatch peer_thread_entered_counter;
 
     public static class ServingPeer{

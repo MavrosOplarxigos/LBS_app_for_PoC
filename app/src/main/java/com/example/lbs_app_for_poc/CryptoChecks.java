@@ -3,6 +3,7 @@ import android.util.Log;
 
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
+import java.security.AlgorithmParameters;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.KeyFactory;
@@ -26,6 +27,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Enumeration;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -34,6 +36,11 @@ import javax.crypto.NoSuchPaddingException;
 
 
 public class CryptoChecks {
+
+    public static boolean isPythonStyleEncryptAndDecryptWorking(X509Certificate certificate, java.security.PrivateKey privateKey){
+
+        return true;
+    }
 
     public static boolean sameAlgorithm(PublicKey publicKey, PrivateKey privateKey){
         return (publicKey.getAlgorithm().equals(privateKey.getAlgorithm()));

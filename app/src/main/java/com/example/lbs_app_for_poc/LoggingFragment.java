@@ -102,7 +102,7 @@ public class LoggingFragment extends Fragment {
         super.onViewCreated(view, savedInstanceState);
 
         TextView tvLT = view.findViewById(R.id.LoggingTitle);
-        tvLT.setText("LOG: " + InterNodeCrypto.getCommonName(InterNodeCrypto.my_cert) );
+        tvLT.setText("LOG: " + InterNodeCrypto.getCommonName(InterNodeCrypto.my_cert) + "\n" + TCPhelpers.retriveOwnIpAddressString() );
 
         stopLiveUpdate = false;
         MainLogSV = (ScrollView) view.findViewById(R.id.MainLogSV);
