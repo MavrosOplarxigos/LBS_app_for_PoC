@@ -52,11 +52,11 @@ public class LoggingFragment extends Fragment {
 
         @Override
         public void run() {
-            Log.d("LiveUpdateThread","Entered run of live update Thread!");
+            //Log.d("LiveUpdateThread","Entered run of live update Thread!");
             try {
-                Log.d("LiveUpdateThread","Try entered!");
+                //Log.d("LiveUpdateThread","Try entered!");
                 int prev = LoggingFragment.this.SoFarAddedTVs;
-                Log.d("LiveUpdateThread","prev = " + prev);
+                //Log.d("LiveUpdateThread","prev = " + prev);
                 Handler mainHandler = new Handler(Looper.getMainLooper());
                 while (true) {
                     Thread.sleep(200);
@@ -70,7 +70,7 @@ public class LoggingFragment extends Fragment {
                                     @Override
                                     public void run() {
                                         LoggingFragment.this.MainLogLL.addView(tv);
-                                        Log.d("LiveUpdateThread","added new view to the linear layout!");
+                                        //Log.d("LiveUpdateThread","added new view to the linear layout!");
                                     }
                                 }
                         );
@@ -84,6 +84,7 @@ public class LoggingFragment extends Fragment {
                 }
             }
             catch(Exception e){
+                e.printStackTrace();
                 Log.d("LiveUpdateThread","Could not sleep!");
             }
         }

@@ -54,6 +54,8 @@ public class ServingNodeQueryHandleThread extends Thread {
     public X509Certificate peer_cert = null;
     public String peer_name = null;
 
+    public int QUERYING_PEER_CONNECTION_TIMEOUT_HELLO = 1000;
+
     public ServingNodeQueryHandleThread(Socket socket){
         this.socket = socket;
         LoggingFragment.mutexTvdAL.lock();
@@ -235,6 +237,15 @@ public class ServingNodeQueryHandleThread extends Thread {
 
         DataInputStream dis = null;
         DataOutputStream dos = null;
+
+        try{
+            s.setSoTimeout(QUERYING_PEER_CONNECTION_TIMEOUT_HELLO);
+        }
+        catch (Exception e){
+            safe_exit("Could not initialize the socket timeout",e,s);
+            return false;
+        }
+
         try {
             dis = new DataInputStream(s.getInputStream());
             dos = new DataOutputStream(s.getOutputStream());
@@ -246,6 +257,7 @@ public class ServingNodeQueryHandleThread extends Thread {
 
         // 1) HANDSHAKE STEP 1: RECEIVE CLIENT PSEUDO CREDS
         // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
+        Log.d("SNQHT","Now started carrying out the HELLO phase!");
         ByteArrayOutputStream baosClientHello = null;
         try {
             baosClientHello = TCPhelpers.receiveBuffedBytesNoLimit(dis);

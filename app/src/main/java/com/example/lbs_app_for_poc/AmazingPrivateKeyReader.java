@@ -84,17 +84,17 @@ public class AmazingPrivateKeyReader {
 
         // try without removing any bytes from the file (aka with the header and tail of the key included)
         try{
-            Log.d("myPEMparser","Trying to parse key file unchanged!");
+            //Log.d("myPEMparser","Trying to parse key file unchanged!");
             rsa_key = callingKeyFactory(key_bytes);
-            Log.d("myPEMparser","SUCCESSFULLY: parsed the key as is!");
+            //Log.d("myPEMparser","SUCCESSFULLY: parsed the key as is!");
             return rsa_key;
         }
         catch (Exception e){
-            Log.d("myPEMparser","FAILURE: The key file can't be parsed without any changes!");
-            e.printStackTrace();
+            //Log.d("myPEMparser","FAILURE: The key file can't be parsed without any changes!");
+            //e.printStackTrace();
         }
 
-        Log.d("myPEMparser","OK we will try removing header and tail and then parse the key!");
+        //Log.d("myPEMparser","OK we will try removing header and tail and then parse the key!");
 
         // removing the header and tail
         String key_string = new String(key_bytes, StandardCharsets.UTF_8);
@@ -106,14 +106,14 @@ public class AmazingPrivateKeyReader {
 
         // trying to see if the key is parsed this way
         try{
-            Log.d("myPEMparser","Trying to parse key file encoded to base 64 and headers removed!");
+            //Log.d("myPEMparser","Trying to parse key file encoded to base 64 and headers removed!");
             rsa_key = callingKeyFactory(encoded64);
-            Log.d("myPEMparser","SUCCESSFULLY: parsed the key with encoding to base 64!");
+            //Log.d("myPEMparser","SUCCESSFULLY: parsed the key with encoding to base 64!");
             return rsa_key;
         }
         catch (Exception e){
-            Log.d("myPEMparser","FAILURE: The key file can't be parsed after encoded to base 64!");
-            e.printStackTrace();
+            //Log.d("myPEMparser","FAILURE: The key file can't be parsed after encoded to base 64!");
+            //e.printStackTrace();
         }
 
         // effort too pass the key without encoding to base 64 but rather just removing the headers
@@ -121,14 +121,14 @@ public class AmazingPrivateKeyReader {
 
         // trying to see if the key is parsed this way
         try{
-            Log.d("myPEMparser","Trying to parse key file only with headers removed!");
+            //Log.d("myPEMparser","Trying to parse key file only with headers removed!");
             rsa_key = callingKeyFactory(encoded64);
-            Log.d("myPEMparser","SUCCESSFULLY: parsed the key only with headers removed!");
+            //Log.d("myPEMparser","SUCCESSFULLY: parsed the key only with headers removed!");
             return rsa_key;
         }
         catch (Exception e){
-            Log.d("myPEMparser","FAILURE: The key file can't be parsed with just the headers revoved!");
-            e.printStackTrace();
+            //Log.d("myPEMparser","FAILURE: The key file can't be parsed with just the headers revoved!");
+            //e.printStackTrace();
         }
 
         // maybe try with PEM reader?
