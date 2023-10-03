@@ -319,7 +319,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // This is what we call a PEER MISS: due to no peers discovered/given
                         if(ServingPeerArrayList.size() == 0){
                             LoggingFragment.mutexTvdAL.lock();
-                            LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No Peers. Direct Request to Signing Server",Color.YELLOW));
+                            LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No Peers. Direct Request to Signing Server",Color.DKGRAY));
                             byte [] decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery);
                             if( decJson == null ){
                                 LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("Signing Server No Response",Color.RED));
@@ -417,7 +417,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Query Response Rate = [" + responded + " / " + peers + "]",(peers==responded)?Color.GREEN:Color.RED));
 
                 if(responded == 0){
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Forced peer discovery thread restart! Cause: 0 responses to query.",Color.YELLOW));
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Forced peer discovery thread restart! Cause: 0 responses to query.",Color.DKGRAY));
 
                     // TODO:
                     // - unlock everything that this thread has locked DONE
@@ -438,14 +438,22 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     Log.d("ResponseCollectionThread","ERROR: Not all responses received consent with one another");
                 }
                 else {
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Consensus amongst ALL responses!",Color.GREEN));
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Consensus amongst ALL peers that responded!",Color.GREEN));
                     Log.d("ResponseCollectionThread", "SUCCESS: All responses received consent with each other!");
                 }
+                LoggingFragment.mutexTvdAL.unlock();
 
                 // applying the result that we got from the peers
-                apply_search_result(peerResponseDecJson[first_reponded]);
+                int final_first_responded = first_reponded;
+                getActivity().runOnUiThread(
+                        new Runnable() {
+                            @Override
+                            public void run() {
+                                apply_search_result(peerResponseDecJson[final_first_responded]);
+                            }
+                        }
+                );
 
-                LoggingFragment.mutexTvdAL.unlock();
                 // unlocking the response bytes arrays for future searches
                 for(int i=0;i<peers;i++){
                     SearchingNodeFragment.mutexPeerResponseDecJson[i].unlock();

@@ -252,7 +252,7 @@ public class InterNodeCrypto {
 
         // Determine the maximum block size for encryption
         int blockSize = cipher.getBlockSize();
-        Log.d("CRYPTOBLOCKS","The ENCRYPT block size is " + blockSize);
+        // Log.d("CRYPTOBLOCKS","The ENCRYPT block size is " + blockSize);
 
         // Calculate the size of the output array
         int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);
@@ -275,11 +275,11 @@ public class InterNodeCrypto {
 
     }
 
-    public static byte [] decryptWithOwnKey(byte [] input) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
-        return decryptWithKey(input,my_key);
+    public static byte [] decryptWithOwnKey(byte [] input, int OriginalSize) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
+        return decryptWithKey(input,my_key,OriginalSize);
     }
 
-    public static byte [] decryptWithKey(byte [] input, PrivateKey key_given) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
+    public static byte [] decryptWithKey(byte [] input, PrivateKey key_given, int OriginalSize) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, IllegalBlockSizeException, BadPaddingException, InvalidAlgorithmParameterException {
 
         // Create the RSA cipher with OAEP padding
         Cipher cipher = Cipher.getInstance("RSA/ECB/OAEPWithSHA-256AndMGF1Padding");
@@ -317,7 +317,10 @@ public class InterNodeCrypto {
             outputOffset += decryptedBlock.length;
         }
 
-        return dec_data;
+        byte [] DecryptedDataWithoutPadding = new byte[OriginalSize];
+        System.arraycopy(dec_data,0,DecryptedDataWithoutPadding,0,OriginalSize);
+
+        return DecryptedDataWithoutPadding;
     }
 
     public static CryptoTimestamp getSignedTimestamp() throws NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
@@ -539,12 +542,12 @@ public class InterNodeCrypto {
             return false;
         }
 
-        Log.d("TCP " + receiver, "The fields check out and they are the following: ");
+        //Log.d("TCP_HELLO_CHECKS" + receiver, "The fields check out and they are the following: ");
         // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]: 8 | [SIGNED_NONCE]: 256
-        Log.d("TCP " + receiver, "HELLO = " + arr[0] );
-        Log.d("TCP " + receiver, "CERT = " + InterNodeCrypto.getCertDetails(cert) );
-        Log.d("TCP " + receiver, "timestamp = " + arr[2] );
-        Log.d("TCP " + receiver, "signed timestamp = " + arr[3] );
+        //Log.d("TCP_HELLO_CHECKS" + receiver, "HELLO = " + TCPhelpers.byteArrayToDecimalString(arr[0]) );
+        //Log.d("TCP_HELLO_CHECKS" + receiver, "CERT = " + InterNodeCrypto.getCertDetails(cert) );
+        //Log.d("TCP_HELLO_CHECKS" + receiver, "timestamp = " + TCPhelpers.byteArrayToDecimalString(arr[2]) );
+        //Log.d("TCP_HELLO_CHECKS" + receiver, "signed timestamp = " + TCPhelpers.byteArrayToDecimalString(arr[3]) );
 
         return true;
 

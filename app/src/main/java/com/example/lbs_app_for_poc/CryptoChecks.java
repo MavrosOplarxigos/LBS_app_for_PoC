@@ -60,7 +60,7 @@ public class CryptoChecks {
 
             // tesing that the modulus and exponent of the keys are the same
             if (rsaPrivateKey.getModulus().equals(rsaPublicKey.getModulus())) {
-                Log.d("End&DecCheck", "The modulus of the private key matches that of the public key");
+                //Log.d("End&DecCheck", "The modulus of the private key matches that of the public key");
             } else {
                 Log.d("End&DecCheck", "ERROR: The modulus of the private key DOESN'T match that of the public key");
                 return false;
@@ -70,7 +70,7 @@ public class CryptoChecks {
             byte[] data = "test_data_1234".getBytes();
             byte[] false_data = "test_data_1235".getBytes();
             byte[] false_data2 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".getBytes();
-            Log.d("End&DecCheck", "The initial data are " + (new String(data, StandardCharsets.UTF_8)));
+            //Log.d("End&DecCheck", "The initial data are " + (new String(data, StandardCharsets.UTF_8)));
 
             // encrypting
             Cipher cipher = Cipher.getInstance("RSA");
@@ -78,7 +78,7 @@ public class CryptoChecks {
             byte[] enc_data = cipher.doFinal(data);
             byte[] enc_false_data = cipher.doFinal(false_data);
             byte[] enc_false_data2 = cipher.doFinal(false_data2);
-            Log.d("End&DecCheck", "The encrypted data are " + (new String(enc_data, StandardCharsets.UTF_8)));
+            //Log.d("End&DecCheck", "The encrypted data are " + (new String(enc_data, StandardCharsets.UTF_8)));
 
             // decrypting
             Cipher dec_cipher = Cipher.getInstance("RSA");
@@ -86,7 +86,7 @@ public class CryptoChecks {
             byte[] dec_data = dec_cipher.doFinal(enc_data);
 
             boolean result = (Arrays.equals(dec_data, data)) && !(Arrays.equals(dec_data, false_data)) && !(Arrays.equals(dec_data, false_data2));
-            Log.d("End&DecCheck", "The decrypted data are " + (new String(dec_data, StandardCharsets.UTF_8)));
+            //Log.d("End&DecCheck", "The decrypted data are " + (new String(dec_data, StandardCharsets.UTF_8)));
 
             return result;
         }
@@ -176,11 +176,11 @@ public class CryptoChecks {
     }
 
     public static boolean isCertificateSignedBy(X509Certificate certificate, X509Certificate issuerCertificate) {
-        Log.d("is certificate signed by","Function enters!");
+        // Log.d("is certificate signed by","Function enters!");
         try {
             PublicKey issuerPublicKey = issuerCertificate.getPublicKey();
             certificate.verify(issuerPublicKey);
-            Log.d("CERT SIGNED BY CHECK","The certificate is signed by the issuer certificate with DN " + issuerCertificate.getSubjectDN() );
+            // Log.d("CERT SIGNED BY CHECK","The certificate is signed by the issuer certificate with DN " + issuerCertificate.getSubjectDN() );
             return true;
         } catch (CertificateException e) {
             // Handle certificate parsing error
@@ -191,6 +191,7 @@ public class CryptoChecks {
             Log.d("CERT SIGNED BY CHECK","The certificate is not signed by the issuer certificate with DN " + issuerCertificate.getSubjectDN() );
             return false;
         }
+        Log.d("CERT SIGNED BY CHECK","ERROR: The certificate is NOT signed by the issuer certificate with DN " + issuerCertificate.getSubjectDN() );
         return false;
     }
 

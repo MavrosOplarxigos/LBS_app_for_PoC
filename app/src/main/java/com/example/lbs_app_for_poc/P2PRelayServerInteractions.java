@@ -106,6 +106,7 @@ public class P2PRelayServerInteractions {
                 }
                 catch (Exception e){
                     Log.d("Peer discovery: ","Could not retrieve new peers!");
+                    e.printStackTrace();
                     // maybe for some reason the server is flooded so we will wait some time before reconnecting to it
                     try{
                         Thread.sleep(QUERY_INTERVAL_MSEC);
@@ -113,7 +114,6 @@ public class P2PRelayServerInteractions {
                     catch (InterruptedException ex){
                         ex.printStackTrace();
                     }
-                    e.printStackTrace();
                 }
             }
         }
@@ -165,8 +165,11 @@ public class P2PRelayServerInteractions {
                 byte [] ENC_records_byte_array = TCPhelpers.buffRead(sizeOfEncRecords,dis);
                 byte [] recordsByteArray = null;
 
+                byte [] OriginalSizeOfDecArrayBytes = TCPhelpers.buffRead(4,dis);
+                int OriginalSizeOfDecArray = byteArrayToInt(OriginalSizeOfDecArrayBytes);
+
                 try {
-                    recordsByteArray = InterNodeCrypto.decryptWithOwnKey(ENC_records_byte_array);
+                    recordsByteArray = InterNodeCrypto.decryptWithOwnKey(ENC_records_byte_array,OriginalSizeOfDecArray);
                 }
                 catch(Exception e){
                     Log.d("PDISC","Could not decrypt the peer solicitation!");

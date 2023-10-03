@@ -84,7 +84,7 @@ public class TCPServerControlClass{
                     Log.d("TCPServerAcceptingThread","Error while accepting connection on serving socket!");
                     LoggingFragment.mutexTvdAL.lock();
                     LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("ERROR: Serving Socket Accept Failure!", Color.RED));
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepting cooldown for " + WAIT_AFTER_ACCEPT_FAILURE_MSEC + " msec.", Color.YELLOW));
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepting cooldown for " + WAIT_AFTER_ACCEPT_FAILURE_MSEC + " msec.", Color.BLUE));
                     LoggingFragment.mutexTvdAL.unlock();
                     try {
                         Thread.sleep(WAIT_AFTER_ACCEPT_FAILURE_MSEC);

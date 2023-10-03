@@ -19,6 +19,7 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.SignatureException;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 
 import javax.crypto.BadPaddingException;
@@ -142,9 +143,17 @@ public class PeerInteractions {
                 return;
             }
 
+            int OriginalQueryArraySize = APICallBytesClientQuery.length;
+            byte [] OriginalQueryArraySizeBytes = TCPhelpers.intToByteArray(OriginalQueryArraySize);
+
+            LoggingFragment.mutexTvdAL.lock();
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Original Query Size: " + OriginalQueryArraySize , Color.DKGRAY ) );
+            LoggingFragment.mutexTvdAL.unlock();
+
             ByteArrayOutputStream baosClientQuery = new ByteArrayOutputStream();
             try {
-                baosClientQuery.write(queryBytesClientQuery);
+                baosClientQuery.write(queryBytesClientQuery); // The string QUERY
+                baosClientQuery.write(OriginalQueryArraySizeBytes); // The Decrytped Query Array Size
                 baosClientQuery.write(TCPServerControlClass.transmission_del);
                 baosClientQuery.write(APICallEncryptedBytesClientQueryLength);
                 baosClientQuery.write(TCPServerControlClass.transmission_del);
@@ -155,6 +164,25 @@ public class PeerInteractions {
                 safe_exit("ERROR: Could not put client query fields in the byte array output stream",e,s);
                 return;
             }
+
+            // Log.d("CLIENT_QUERY_IMPORTANT","The length of the signatuere is: " + APICallBytesSignedClientQuery.length );
+            // Log.d("CLIENT_QUERY_IMPORTANT","The signatuere is: " + TCPhelpers.byteArrayToDecimalString(APICallBytesSignedClientQuery) );
+            LoggingFragment.mutexTvdAL.lock();
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails( "Original API CALL: " + TCPhelpers.byteArrayToDecimalString(APICallBytesClientQuery) , Color.DKGRAY ) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails( "API CALL Signature: " + TCPhelpers.byteArrayToDecimalString(APICallBytesSignedClientQuery) , Color.DKGRAY ) );
+            try {
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails( "Certificate: " + TCPhelpers.byteArrayToDecimalString(my_cert.getEncoded()) , Color.DKGRAY ) );
+            } catch (CertificateEncodingException e) {
+                safe_exit("ERROR: Can't get the certificate encoded!",e,s);
+                return;
+            }
+            try {
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails( "My isSignedByCert = " + CryptoChecks.isSignedByCert(APICallBytesClientQuery,APICallBytesSignedClientQuery,my_cert) , Color.DKGRAY ) );
+            } catch (Exception e) {
+                safe_exit("ERROR: could not even check my own query!",e,s);
+                return;
+            }
+            LoggingFragment.mutexTvdAL.unlock();
 
             byte [] ClientQuery = baosClientQuery.toByteArray();
             Log.d(debug_tag_peer(),"The size of the entire query message in bytes should be " + ClientQuery.length );
@@ -167,70 +195,156 @@ public class PeerInteractions {
             }
             Log.d(debug_tag_peer(),"SUCCESS: Client Query sent to serving peer " + peer_name + " @ " + peerIP  );
 
-            // 4.1) SERVING PEER ANSWR FORWARD
-            // [ENC_ANS_LEN: 4] | [ENC_ANS] | [SSQA_LEN: 4] | [SSQA]
+            // 4.1.1) GET ANSWER length
 
-            ByteArrayOutputStream baosSP_AFWD = null;
+            byte [] reply_size_bytes = new byte[0];
+            try {
+                reply_size_bytes = TCPhelpers.buffRead(4,dis);
+            } catch (IOException e) {
+                safe_exit("Error: Could not read the reply size from remote peer",e,s);
+                return;
+            }
+            int reply_size = TCPhelpers.byteArrayToIntBigEndian(reply_size_bytes);
+            Log.d(debug_tag_peer(),"The size expected from the SERVING PEER ANSWER FORWARD message is: " + reply_size);
+
+            LoggingFragment.mutexTvdAL.lock();
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Expected answer size from Peer: " + reply_size, Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
+
+            // 4.1) SERVING PEER ANSWR FORWARD
+            // [ENC_ANS_LEN: 4] | [ENC_ANS] | [SSQA_LEN: 4] | [SSQA] | [DEC_ANS_LEN]
+
+            // ByteArrayOutputStream baosSP_AFWD = null;
+            byte [] SP_AFWD = null;
             try{
-                baosSP_AFWD = TCPhelpers.receiveBuffedBytesNoLimit(dis);
+                // baosSP_AFWD = TCPhelpers.receiveBuffedBytesNoLimit(dis);
+                SP_AFWD = TCPhelpers.buffRead(reply_size,dis);
             }
             catch (Exception e){
                 safe_exit("Error: Could not retrieve the response from the SERVING PEER ANSWER FWD phase",e,s);
                 return;
             }
-            byte [] SP_AFWD = baosSP_AFWD.toByteArray();
+            // byte [] SP_AFWD = baosSP_AFWD.toByteArray();
+
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"SP_AFWD real length: " + SP_AFWD.length);
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Answer size from Peer: " + SP_AFWD.length, Color.MAGENTA ) );
+            Log.d(debug_tag_peer(),"SP_AFWD first 10 bytes: " + TCPhelpers.byteArrayToDecimalStringFirst10(SP_AFWD) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Answer from Peer bytes: " + TCPhelpers.byteArrayToDecimalStringFirst10(SP_AFWD), Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
+
+            int afci = 0; // The index we are looking at in the answer forward byte array
 
             // Parse the response
             byte [] encAnsLenByteArray = new byte[4];
             for(int i=0;i<4;i++){
-                if(i >= SP_AFWD.length){
+                if(afci+i >= SP_AFWD.length){
                     safe_exit("Error: The serving peer answer is too small. Could not get encAnsLenByteArray.",null,s);
                     return;
                 }
-                encAnsLenByteArray[i] = SP_AFWD[i];
+                encAnsLenByteArray[i] = SP_AFWD[afci+i];
             }
-            int ENC_ANS_LEN = TCPhelpers.byteArrayToIntLittleEndian(encAnsLenByteArray);
+            afci+=4;
+
+            int ENC_ANS_LEN = TCPhelpers.byteArrayToIntBigEndian(encAnsLenByteArray);
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"SP_FWD ENC_ANS_LEN: " + ENC_ANS_LEN);
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD ENC_ANS_LEN: " + ENC_ANS_LEN, Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
 
             byte [] encAns = new byte[ENC_ANS_LEN];
-            for(int i=4;i<4+ENC_ANS_LEN;i++){
-                if(i >= SP_AFWD.length){
+            for(int i=0;i<ENC_ANS_LEN;i++){
+                if(afci + i >= SP_AFWD.length){
                     safe_exit("Error: The serving peer answer is too small. Could not get ENC ANS.",null,s);
                     return;
                 }
-                encAns[i-4] = SP_AFWD[i];
+                encAns[i] = SP_AFWD[afci+i];
             }
-            byte [] ANSWER = null;
-            try {
-                ANSWER = InterNodeCrypto.decryptWithKey(encAns, my_key);
-            }
-            catch (Exception e){
-                safe_exit("Error: Could not decrytp the answer with our own private key!",e,s);
-            }
+            afci+=ENC_ANS_LEN;
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"SP_FWD encAns : " + TCPhelpers.byteArrayToDecimalStringFirst10(encAns));
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD encAns : " + TCPhelpers.byteArrayToDecimalStringFirst10(encAns), Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
 
-            // Now off to check the signature
+            // checking signature
             byte [] SSQALenByteArray = new byte[4];
-            for(int i=4+ENC_ANS_LEN;i<4+ENC_ANS_LEN+4;i++){
-                if(i >= SP_AFWD.length){
+            for(int i=0;i<4;i++){
+                if(afci + i >= SP_AFWD.length){
                     safe_exit("Error: The serving peer answer is too small. Could not get SSQALenByteArray.",null,s);
                     return;
                 }
-                SSQALenByteArray[i-(4+ENC_ANS_LEN)] = SP_AFWD[i];
+                SSQALenByteArray[i] = SP_AFWD[afci+i];
             }
-            int SSQA_LEN = TCPhelpers.byteArrayToIntLittleEndian(SSQALenByteArray);
+            afci+=4;
+            int SSQA_LEN = TCPhelpers.byteArrayToIntBigEndian(SSQALenByteArray);
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"SP_FWD SSQA_LEN: " + SSQA_LEN);
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SSQA LEN: " + SSQA_LEN, Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
 
             byte [] SSQA = new byte[SSQA_LEN];
-            for(int i=4+ENC_ANS_LEN+4;i<4+ENC_ANS_LEN+4+SSQA_LEN;i++){
-                if(i >= SP_AFWD.length){
+            for(int i=0;i<SSQA_LEN;i++){
+                if(afci + i >= SP_AFWD.length){
                     safe_exit("Error: The serving peer answer is too small. Could not get SSQA.",null,s);
                     return;
                 }
-                SSQA[i-(4+ENC_ANS_LEN+4)] = SP_AFWD[i];
+                SSQA[i] = SP_AFWD[afci + i];
             }
+            afci += SSQA_LEN;
+
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"SSQA concatenated : " + TCPhelpers.byteArrayToDecimalStringFirst10(SSQA));
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SSQA: " + TCPhelpers.byteArrayToDecimalStringFirst10(SSQA), Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
+
+            byte [] DEC_ANS_LEN_BYTES = new byte[4];
+            for(int i=0;i<4;i++){
+                if(afci + i >= SP_AFWD.length){
+                    safe_exit("Error: The serving peer answer is too small. Could not get DEC_ANS_LEN.",null,s);
+                    return;
+                }
+                DEC_ANS_LEN_BYTES[i] = SP_AFWD[afci + i];
+            }
+            afci += 4;
+            int DEC_ANS_LEN = TCPhelpers.byteArrayToIntLittleEndian(DEC_ANS_LEN_BYTES);
+
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"DEC_ANS_LEN: " + DEC_ANS_LEN);
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DEC_ANS_LEN: " + DEC_ANS_LEN, Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
+
+            byte [] ANSWER = null;
+            try {
+                ANSWER = InterNodeCrypto.decryptWithKey(encAns, my_key,DEC_ANS_LEN);
+                LoggingFragment.mutexTvdAL.lock();
+                Log.d(debug_tag_peer(),"DECRYPTED ANSWER: " + TCPhelpers.byteArrayToDecimalStringFirst10(ANSWER));
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DECRYPTED ANSWER first 10: " + TCPhelpers.byteArrayToDecimalStringFirst10(ANSWER), Color.MAGENTA ) );
+                Log.d(debug_tag_peer(),"DECRYPTED ANSWER last 10: " + TCPhelpers.byteArrayToDecimalStringLast10(ANSWER));
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DECRYPTED ANSWER last 10: " + TCPhelpers.byteArrayToDecimalStringLast10(ANSWER), Color.MAGENTA ) );
+                LoggingFragment.mutexTvdAL.unlock();
+            }
+            catch (Exception e){
+                safe_exit("Error: Could not decrypt the answer with our own private key!",e,s);
+            }
+
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"APICallBytesClientQuery: " + TCPhelpers.byteArrayToDecimalStringFirst10(APICallBytesClientQuery));
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("APICallBytesClientQuery: " + TCPhelpers.byteArrayToDecimalStringFirst10(APICallBytesClientQuery), Color.MAGENTA ) );
+            Log.d(debug_tag_peer(),"APICallBytesClientQuery last 10: " + TCPhelpers.byteArrayToDecimalStringLast10(APICallBytesClientQuery));
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("APICallBytesClientQuery last 10: " + TCPhelpers.byteArrayToDecimalStringLast10(APICallBytesClientQuery), Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
 
             // OK now we should check the concatenation
             byte [] QAconcatenation = new byte[APICallBytesClientQuery.length + ANSWER.length];
             System.arraycopy(APICallBytesClientQuery,0,QAconcatenation,0,APICallBytesClientQuery.length);
-            System.arraycopy(ANSWER,0,QAconcatenation,0,ANSWER.length);
+            System.arraycopy(ANSWER,0,QAconcatenation,APICallBytesClientQuery.length,ANSWER.length);
+
+            String hashOfConcatenation = TCPhelpers.calculateSHA256Hash(QAconcatenation);
+
+            LoggingFragment.mutexTvdAL.lock();
+            Log.d(debug_tag_peer(),"Hash of concatenatino = " + hashOfConcatenation);
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hash of concatenatino: " + hashOfConcatenation, Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
 
             boolean SSsignatureValid = true;
             try {
@@ -312,7 +426,7 @@ public class PeerInteractions {
 
                 byte [] ClientHello = baosClientHello.toByteArray();
                 String ClientHelloDebugString = new String(ClientHello, StandardCharsets.UTF_8);
-                Log.d("PeerConnectivity", "ClientHelloDebugString: " + ClientHelloDebugString);
+                // Log.d("PeerConnectivity", "ClientHelloDebugString: " + ClientHelloDebugString);
                 dos.write(ClientHello);
                 Log.d("PeerConnectivity","SUCCESS: Sent Client Hello!");
 
@@ -320,7 +434,7 @@ public class PeerInteractions {
                 // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
                 ByteArrayOutputStream baosServerHello = new ByteArrayOutputStream();
                 baosServerHello = TCPhelpers.receiveBuffedBytesNoLimit(dis);
-                Log.d("Peer Connectivity","Server Hello Received");
+                Log.d("Peer Connectivity","Serving Peer Hello Received");
                 byte[] bytesServerHello = baosServerHello.toByteArray();
 
                 // SEPARATING THE FIELDS

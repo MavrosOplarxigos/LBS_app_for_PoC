@@ -1,5 +1,6 @@
 package com.example.lbs_app_for_poc;
 
+import android.graphics.Color;
 import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
@@ -26,6 +27,8 @@ public class SigningServerInterations {
     // [1]: the signature of the RAW query CONCATENATED with the response with the signing server key (CA key)
     public static byte [][] ProxyQuery(byte [] APICallBytesClientQuery, X509Certificate my_cert, PrivateKey my_key, X509Certificate peer_key) throws Exception {
 
+        Log.d("PXQRY","Proxy Query Function enters!");
+
         Socket s = new Socket();
         try{
             InetAddress ssIP = TCPServerControlClass.lbsEC.ENTITIES_MANAGER_IP;
@@ -48,6 +51,8 @@ public class SigningServerInterations {
             e.printStackTrace();
             throw new Exception("Could not retrieve the data streams from the socket with signing server");
         }
+
+        Log.d("PXQRY","Proxy Query Socket and Data Streams initialized!");
 
         // SERVING PEER QUERY FORWARD
         // ["PROXY"] | [4_CERTIFICATE_LENGTH] | [SERVING PEER CERTIFICATE] | [4_API_CALL_ENC_LEN] | [API_CALL_ENC_SSKEY]
@@ -83,18 +88,32 @@ public class SigningServerInterations {
             throw e;
         }
 
-        // SIGNING SERVER ANSWER FORWARD
-        // [ENC_ANSWER_LENGTH] | [ENC_ANSWER] | [SIGNATURE_SS_QA_LEN] | [SIGNATURE_SS_QA]
+        // READY HOW MANY BYTES WE SHOULD EXPECT FROM THE REMOTE SERVER
+        byte [] reply_size_bytes = TCPhelpers.buffRead(4,dis);
+        int reply_size = TCPhelpers.byteArrayToIntLittleEndian(reply_size_bytes);
 
-        ByteArrayOutputStream baosSS_AFWD = null;
+        LoggingFragment.mutexTvdAL.lock();
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Expected answer size from SS: " + reply_size, Color.MAGENTA ) );
+        LoggingFragment.mutexTvdAL.unlock();
+
+        // SIGNING SERVER ANSWER FORWARD
+        // [ENC_ANSWER_LENGTH] | [ENC_ANSWER] | [SIGNATURE_SS_QA_LEN] | [SIGNATURE_SS_QA] | [DEC_ANSWER_LEN]
+
+        // ByteArrayOutputStream baosSS_AFWD = null;
+        byte [] SS_AFWD = null;
         try {
-            baosSS_AFWD = TCPhelpers.receiveBuffedBytesNoLimit(dis);
+            SS_AFWD = TCPhelpers.buffRead(reply_size,dis);
+            // baosSS_AFWD = TCPhelpers.receiveBuffedBytesNoLimit(dis);
         }
         catch (Exception e){
             Log.d("SIGNING SERVER ANSWER FORWARD","Could not receive the answer from the SS");
             throw e;
         }
-        byte [] SS_AFWD = baosSS_AFWD.toByteArray();
+        // byte [] SS_AFWD = baosSS_AFWD.toByteArray();
+
+        LoggingFragment.mutexTvdAL.lock();
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("The size of the SS_AFWD: " + SS_AFWD.length, Color.GREEN ) );
+        LoggingFragment.mutexTvdAL.unlock();
 
         byte [] encAnsLenByteArray = new byte[4];
         for(int i=0;i<4;i++) { // 4 bytes
@@ -112,7 +131,6 @@ public class SigningServerInterations {
             }
             encAnsByteArray[i-4] = SS_AFWD[i];
         }
-        byte [] ANSWER = InterNodeCrypto.decryptWithKey(encAnsByteArray,my_key);
 
         byte [] signatureSSQAByteArray = new byte[4];
         for(int i=4+ENC_ANSWER_LENGTH;i<4+ENC_ANSWER_LENGTH+4;i++) { // 4 bytes
@@ -131,6 +149,22 @@ public class SigningServerInterations {
             SIGNATURE_SS_QA[i-(4+ENC_ANSWER_LENGTH+4)] = SS_AFWD[i];
         }
 
+        byte [] DecAnsLenByteArray = new byte[4];
+        for(int i=4+ENC_ANSWER_LENGTH+4+SIGNATURE_SS_QA_LEN;i<SS_AFWD.length;i++){
+            if(i > SS_AFWD.length){
+                throw new Exception("The size of the received data is too small. Couldn't get the DEC_ANS_LEN");
+            }
+            DecAnsLenByteArray[i-(4+ENC_ANSWER_LENGTH+4+SIGNATURE_SS_QA_LEN)] = SS_AFWD[i];
+        }
+        int DEC_ANS_LEN = TCPhelpers.byteArrayToIntLittleEndian(DecAnsLenByteArray);
+        byte [] ANSWER = InterNodeCrypto.decryptWithKey(encAnsByteArray,my_key,DEC_ANS_LEN);
+
+        LoggingFragment.mutexTvdAL.lock();
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Decrypted answer ss expected length: " + DEC_ANS_LEN, Color.MAGENTA ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Decrypted answer from signing server: " + TCPhelpers.byteArrayToDecimalStringFirst10(ANSWER), Color.MAGENTA ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Decrypted answer from signing server last 10 bytes: " + TCPhelpers.byteArrayToDecimalStringLast10(ANSWER), Color.MAGENTA ) );
+        LoggingFragment.mutexTvdAL.unlock();
+
         // We have the QUERY = APICallBytesClientQuery
         // We have the ANSWER = ANSWER
         // We can now verify the signature of the signing server
@@ -138,13 +172,21 @@ public class SigningServerInterations {
         System.arraycopy(APICallBytesClientQuery, 0, QAconcatenation, 0, APICallBytesClientQuery.length);
         System.arraycopy(ANSWER, 0, QAconcatenation, APICallBytesClientQuery.length, ANSWER.length);
 
+        String hashOfConcatenation = TCPhelpers.calculateSHA256Hash(QAconcatenation);
+
+        LoggingFragment.mutexTvdAL.lock();
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("APICallBytesClientQuery: " + TCPhelpers.byteArrayToDecimalStringFirst10(APICallBytesClientQuery), Color.MAGENTA ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("APICallBytesClientQuery last 10: " + TCPhelpers.byteArrayToDecimalStringLast10(APICallBytesClientQuery), Color.MAGENTA ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hash of concatenatino: " + hashOfConcatenation, Color.MAGENTA ) );
+        LoggingFragment.mutexTvdAL.unlock();
+
         boolean SSsignatureValid = CryptoChecks.isSignedByCert(QAconcatenation, SIGNATURE_SS_QA, InterNodeCrypto.CA_cert);
         if(!SSsignatureValid){
             throw new Exception("The signature of the SS for the concatenation of the query and the answer is invalid");
         }
 
         // OK so now we have all the fields required to set the response fields
-        byte [][] response_fields = new byte[2][];
+        byte [][] response_fields = new byte[3][];
 
         // [0]: the answer to the query encrypted with the querying peer key
         // [1]: the signature of the RAW query CONCATENATED with the response with the signing server key (CA key)
@@ -160,6 +202,7 @@ public class SigningServerInterations {
 
         response_fields [0] = ENC_ANSWER_FOR_PEER;
         response_fields [1] = SIGNATURE_SS_QA;
+        response_fields [2] = DecAnsLenByteArray;
 
         return response_fields;
 

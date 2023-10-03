@@ -11,12 +11,14 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.SignatureException;
+import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -61,7 +63,7 @@ public class ServingNodeQueryHandleThread extends Thread {
         LoggingFragment.mutexTvdAL.lock();
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepted Service Request from " + this.socket.getInetAddress().getHostAddress() , Color.MAGENTA ) );
         LoggingFragment.mutexTvdAL.unlock();
-        peerIP = socket.getInetAddress().getHostName();
+        peerIP = socket.getInetAddress().getHostAddress();
         transmission_del = TCPServerControlClass.transmission_del;
         my_PSEUDO_CREDS_TO_COPY_lock.lock();
         my_cert = my_cert_to_copy;
@@ -96,7 +98,7 @@ public class ServingNodeQueryHandleThread extends Thread {
         }
 
         // 3) CLIENT MESSAGE: RECEIVE A MESSAGE FROM CLIENT (QUERY,BYE)
-        // [QUERY] | [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] | [API_CALL_SIGNED_BYTES]
+        // ["QUERY"] [DEC_QUERY_LEN] | [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] | [API_CALL_SIGNED_BYTES]
         ByteArrayOutputStream baosClientMessage = new ByteArrayOutputStream();
         try{
             baosClientMessage = TCPhelpers.receiveBuffedBytesNoLimit(dis);
@@ -116,7 +118,7 @@ public class ServingNodeQueryHandleThread extends Thread {
         // [QUERY]
         byte [] ClientMessageOption;
         ByteArrayOutputStream baosClientMessageOption = new ByteArrayOutputStream();
-        for(int i=ci; (i<bytesClientMessage.length) && ((char)( bytesClientMessage[i] ) != transmission_del) ;i++){
+        for(int i=ci; (i<5) && (i<bytesClientMessage.length) && ((char)( bytesClientMessage[i] ) != transmission_del) ;i++){
             baosClientMessageOption.write( (byte) bytesClientMessage[i] );
             ci=i;
         }
@@ -125,6 +127,18 @@ public class ServingNodeQueryHandleThread extends Thread {
             safe_exit("The client didn't append the QUERY prefix in its request",null,socket);
             return;
         }
+
+        // [DEC_QUERY_LEN]
+        byte [] OriginalQueryArraySizeByes = new byte[4];
+        for(int i=ci+1; (i<9) && (i<bytesClientMessage.length) && ((char)( bytesClientMessage[i] ) != transmission_del) ;i++){
+            OriginalQueryArraySizeByes[i-5] = (bytesClientMessage[i]);
+            ci=i;
+        }
+        int OriginalQueryArrayLength = TCPhelpers.byteArrayToIntBigEndian(OriginalQueryArraySizeByes);
+
+        LoggingFragment.mutexTvdAL.lock();
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Expected Original Query Size: " + OriginalQueryArrayLength , Color.DKGRAY ) );
+        LoggingFragment.mutexTvdAL.unlock();
 
         ci++;
         if( (char)(bytesClientMessage[ci]) != transmission_del ){
@@ -176,7 +190,7 @@ public class ServingNodeQueryHandleThread extends Thread {
         // CHECK QUERY FIELDS CRYPTOGRAPHY
         byte [] API_CALL_RAW_BYTES = null;
         try {
-            API_CALL_RAW_BYTES = crypto_check_query(fieldsClientQuery);
+            API_CALL_RAW_BYTES = crypto_check_query(fieldsClientQuery,OriginalQueryArrayLength);
         }
         catch(Exception e){
             safe_exit("The cryptography checks on the Client Query did not pass",e,socket);
@@ -186,6 +200,7 @@ public class ServingNodeQueryHandleThread extends Thread {
         // Since we have query now we can proceed with talking to the signing server to complete it
         // [0]: the answer to the query encrypted with the querying peer key
         // [1]: the signature of the RAW query CONCATENATED with the response with the signing server key (CA key)
+        // [2]: the SIZE of the original ANSWER DEC_ANS_LEN
         byte [][] ss_answer = null;
         try{
             ss_answer = SigningServerInterations.ProxyQuery(API_CALL_RAW_BYTES,my_cert,my_key,peer_cert);
@@ -196,19 +211,35 @@ public class ServingNodeQueryHandleThread extends Thread {
         }
 
         int enc_ans_len = ss_answer[0].length;
-        byte [] enc_ans_len_bytes = TCPhelpers.intToByteArray(enc_ans_len);
+        byte [] enc_ans_len_bytes = TCPhelpers.intToByteArrayBigEndian(enc_ans_len);
         int ssqa_len = ss_answer[1].length;
-        byte [] ssqa_len_bytes = TCPhelpers.intToByteArray(ssqa_len);
+        byte [] ssqa_len_bytes = TCPhelpers.intToByteArrayBigEndian(ssqa_len);
 
         // Now that we have the response fields we should sent them back to the querying peer
         try {
             ByteArrayOutputStream baosServingPeerAnswerFWD = new ByteArrayOutputStream();
-            baosServingPeerAnswerFWD.write(enc_ans_len_bytes);
-            baosServingPeerAnswerFWD.write(ss_answer[0]);
+            baosServingPeerAnswerFWD.write(enc_ans_len_bytes); // 4
+            baosServingPeerAnswerFWD.write(ss_answer[0]); //
             baosServingPeerAnswerFWD.write(ssqa_len_bytes);
             baosServingPeerAnswerFWD.write(ss_answer[1]);
+            baosServingPeerAnswerFWD.write(ss_answer[2]);
             byte [] ServingPeerAnswerFwd = baosServingPeerAnswerFWD.toByteArray();
+
+            byte [] AnswerSizeDisclosureBytes = TCPhelpers.intToByteArray(ServingPeerAnswerFwd.length);
+            dos.write(AnswerSizeDisclosureBytes);
+
+            LoggingFragment.mutexTvdAL.lock();
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD Reply size length: " + ServingPeerAnswerFwd.length, Color.MAGENTA ) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD Reply bytes: " + TCPhelpers.byteArrayToDecimalStringFirst10(ServingPeerAnswerFwd), Color.MAGENTA ) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD ENC_ANS_LEN : " + enc_ans_len, Color.MAGENTA ) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD ENC_ANS: " + TCPhelpers.byteArrayToDecimalStringFirst10(ss_answer[0]), Color.MAGENTA ) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD QA_CONCATENATED LEN: " + ssqa_len, Color.MAGENTA ) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD QA_CONCATENATED: " + TCPhelpers.byteArrayToDecimalStringFirst10(ss_answer[1]), Color.MAGENTA ) );
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD DEC_ANSWER_LENGTH_BYTES: " + TCPhelpers.byteArrayToDecimalStringFirst10(ss_answer[2]), Color.MAGENTA ) );
+            LoggingFragment.mutexTvdAL.unlock();
+
             dos.write(ServingPeerAnswerFwd);
+
         }
         catch (Exception e){
             safe_exit("Could not finish the SERVING PEER ANSWER FWD phase",e,socket);
@@ -218,11 +249,27 @@ public class ServingNodeQueryHandleThread extends Thread {
         Log.d("Serving Node Query Handle Thread","SUCCESS: Peer " + peer_name + " @ " + peerIP + " was serviced!");
     }
 
-    public byte [] crypto_check_query(byte [][] fields) throws NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException, InvalidAlgorithmParameterException {
+    public byte [] crypto_check_query(byte [][] fields,int OriginalQueryArrayLength) throws NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException, InvalidAlgorithmParameterException, CertificateEncodingException {
         // Get raw query
-        byte [] raw_query = InterNodeCrypto.decryptWithKey(fields[0],my_key);
+        byte [] raw_query = InterNodeCrypto.decryptWithKey(fields[0],my_key,OriginalQueryArrayLength);
+        Log.d("SNQHT","The decrypted RAW_QUERY is " + new String(raw_query, StandardCharsets.UTF_8) );
+
+        LoggingFragment.mutexTvdAL.lock();
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Original API CALL: " + TCPhelpers.byteArrayToDecimalString(raw_query), Color.DKGRAY ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("API CALL Signature: " + TCPhelpers.byteArrayToDecimalString(fields[1]), Color.DKGRAY ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails( "Certificate: " + TCPhelpers.byteArrayToDecimalString(peer_cert.getEncoded()) , Color.DKGRAY ) );
+        LoggingFragment.mutexTvdAL.unlock();
+
+        Log.d("SNQHT_QUERY_IMPORTANT","The length of the signatuere is: " + fields[1].length );
+        Log.d("SNQHT_QUERY_IMPORTANT","The signatuere is: " + TCPhelpers.byteArrayToDecimalString(fields[1]) );
+
         // Check signature
         boolean signature_ok = CryptoChecks.isSignedByCert(raw_query,fields[1],peer_cert);
+
+        LoggingFragment.mutexTvdAL.lock();
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("signature check serving node = " + signature_ok, Color.DKGRAY ) );
+        LoggingFragment.mutexTvdAL.unlock();
+
         if( !signature_ok ){
             Log.d(debug_tag(),"The signature of the Client Query is not valid!");
             // we throw an exception so that the serving peer will stop the connection
@@ -345,7 +392,7 @@ public class ServingNodeQueryHandleThread extends Thread {
             safe_exit("QUERYING PEER HELLO: The received fields are incorrect! Closing the connection.",null,s);
             return false;
         }
-        Log.d(debug_tag(),"Success: Client Hello received and has valid fields!");
+        Log.d(debug_tag(),"SUCCESS: Client Hello received and has VALID fields!");
 
         // SAVING THE QUERYING NODE CREDENTIALS AND CARRYING OUT RECENCY CHECK
         try {
@@ -362,6 +409,7 @@ public class ServingNodeQueryHandleThread extends Thread {
             return false;
         }
 
+        Log.d(debug_tag(),"SUCCESS: Client pseudonym requests are NOT too frequent!");
         // 2) HANDSHAKE STEP 2: SEND SERVER CREDENTIALS TO THE CLIENT
         // [HELLO]:5 | [CERTIFICATE LENGTH] | [CERTIFICATE BYTES]:~2K | [timestamp]: 8 | [signed timestamp]: 256
         try {

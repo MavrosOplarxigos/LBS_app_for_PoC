@@ -150,11 +150,11 @@ public class AmazingPrivateKeyReader {
             return rsa_key;
         }
         catch (Exception e){
-            Log.d("myPEMparser","FAILURE: The key file can't be parsed without any changes!");
-            e.printStackTrace();
+            Log.d("myPEMparser","The key file can't be parsed without any changes! So we are removing the headers from it!");
+            //e.printStackTrace();
         }
 
-        Log.d("myPEMparser","OK we will try removing header and tail and then parse the key!");
+        // Log.d("myPEMparser","OK we will try removing header and tail and then parse the key!");
 
         // removing the header and tail
         String key_string = new String(key_bytes, StandardCharsets.UTF_8);
@@ -166,7 +166,7 @@ public class AmazingPrivateKeyReader {
 
         // trying to see if the key is parsed this way
         try{
-            Log.d("myPEMparser","Trying to parse key file encoded to base 64 and headers removed!");
+            // Log.d("myPEMparser","Trying to parse key file encoded to base 64 and headers removed!");
             rsa_key = callingKeyFactory(encoded64);
             Log.d("myPEMparser","SUCCESSFULLY: parsed the key with encoding to base 64!");
             return rsa_key;
