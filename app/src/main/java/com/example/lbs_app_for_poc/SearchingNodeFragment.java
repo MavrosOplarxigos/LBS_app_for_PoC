@@ -94,28 +94,29 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     public static final Lock mutextServingPeerArrayList = new ReentrantLock();
     public static LBSEntitiesConnectivity lbsEC4PeerDiscRestart;
 
-    // The bytes arrays for the responses in case of peer querying
+    // The bytes arrays for the responses in case of peer querying (normal case)
     public static byte [][] peerResponseDecJson = new byte[MAX_PEER_RESPONSES][];
     public static Lock [] mutexPeerResponseDecJson = new ReentrantLock[MAX_PEER_RESPONSES];
-    public static CountDownLatch peer_thread_entered_counter;
+    public static CountDownLatch peer_thread_entered_counter; // To await for responses (or timeouts) from all peers that were queried.
+    public static CountDownLatch peer_rediscovery_thread_entered; // To await at least one query completion from the peer discovery thread
 
     public static class ServingPeer{
         // public String DistinguishedName; I don't know the name. I expect only the IP and Port to be of a SOME peer.
         public InetAddress PeerIP;
         public int PeerPort;
-        public boolean faulty; // it either doesn't respond or it returns gibberish
+        // public boolean faulty; // it either doesn't respond or it returns gibberish
         public ServingPeer(InetAddress IP, int Port){
             // DistinguishedName = DN; I don't know the name. I expect only the IP and Port to be of a SOME peer.
             PeerIP = IP;
             PeerPort = Port;
-            faulty = false;
+            // faulty = false;
         }
     }
 
     // We call the following function IFF AND WHEN all of the peers in the ServingPeerArrayList are non-responsive
     public static void P2PThreadExplicitRestart(){
         P2PRelayServerInteractions.qThread.explicit_search_request = true; // setting this true so the previous instance will kill itself
-        P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC4PeerDiscRestart);
+        P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC4PeerDiscRestart,true);
         P2PRelayServerInteractions.qThread.start();
     }
 
@@ -269,8 +270,8 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 }
         );
 
-        // allowing for HTTPS connections
-        network_permit();
+        // allowing for HTTPS connections (unnecessary)
+        // network_permit();
 
         search_button = view.findViewById(R.id.button_search);
         search_button.setActivated(false);
@@ -279,8 +280,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 new View.OnClickListener() {
                     @Override
                     public void onClick(View view) {
-
-// ------------------------------------------------------------------------------- START OF PRESSING THE SEARCH BUTTON ----------------------------------------------------------------------
 
                         // Check UI
                         if(mMap == null){
@@ -319,15 +318,36 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // This is what we call a PEER MISS: due to no peers discovered/given
                         if(ServingPeerArrayList.size() == 0){
                             LoggingFragment.mutexTvdAL.lock();
-                            LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No Peers. Direct Request to Signing Server",Color.DKGRAY));
-                            byte [] decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery);
-                            if( decJson == null ){
-                                LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("Signing Server No Response",Color.RED));
+                            LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No Peers. Direct Request to Signing Server.",Color.DKGRAY));
+                            byte [] decJson = null;
+                            try {
+                                decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
+                                if (decJson == null) {
+                                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server No Response!", Color.RED));
+                                    getActivity().runOnUiThread(
+                                            new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    Toast.makeText(getContext(), "No Peers. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                                }
+                                            }
+                                    );
+                                } else {
+                                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DIRECT REQUEST (no peers): Signing Server Responded.", Color.GREEN));
+                                    apply_search_result(decJson);
+                                }
                             }
-                            else{
-                                LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("Signing Server Responded",Color.GREEN));
+                            catch (Exception e){
+                                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server error on communication!", Color.RED));
+                                getActivity().runOnUiThread(
+                                        new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                Toast.makeText(getContext(), "No Peers. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                            }
+                                        }
+                                );
                             }
-                            apply_search_result(decJson);
                             mutextServingPeerArrayList.unlock();
                             LoggingFragment.mutexTvdAL.unlock();
                             search_button.setClickable(true);
@@ -339,6 +359,8 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // We start the Threads for requesting answers from these peers.
                         peer_thread_entered_counter = new CountDownLatch(ServingPeerArrayList.size());
                         for(int i=0;i<ServingPeerArrayList.size();i++){
+                            // making sure the answer is null before we call the peer interaction thread
+                            SearchingNodeFragment.peerResponseDecJson[i] = null;
                             PeerInteractions.PeerInteractionThread pi = new PeerInteractions.PeerInteractionThread(i,
                                     ServingPeerArrayList.get(i).PeerIP,
                                     ServingPeerArrayList.get(i).PeerPort,
@@ -349,7 +371,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                         // We start our thread meant for receiving all the answers one by one
                         // We pass the current serving list as an argument for the logging by this thread
-                        ResponseCollectionThread rct = new ResponseCollectionThread(ServingPeerArrayList);
+                        ResponseCollectionThread rct = new ResponseCollectionThread(ServingPeerArrayList,false,APICallBytesClientQuery);
                         rct.start();
 
                         // unlocking the resources
@@ -375,13 +397,17 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     // - checks and logs consensus status DONE
     // - logs which peers responded and which have not. If there were in-correct signatures (NOT OF THE SIGNING SERVER) we log this as well
     // - updates map based on one of the answers if we have consensus
-    // - TODO: in the case of no consensus we look at the signed timestamps from the signing server and pick the newest one? -> Implement timestamping of rsponses
+    // - in the case of no consensus we get the first answer (they were all signed thus we can trust all of them)
     public class ResponseCollectionThread extends Thread{
 
         private ArrayList<ServingPeer> spal; // The array list of peers when the requests where sent to them
+        boolean isReAttempt;
+        byte [] APICallBytesClientQuery;
 
-        public ResponseCollectionThread(ArrayList<ServingPeer> sp){
+        public ResponseCollectionThread(ArrayList<ServingPeer> sp, boolean isReAttempt, byte [] queryArray){
             spal = sp;
+            this.isReAttempt = isReAttempt;
+            this.APICallBytesClientQuery = queryArray;
         }
         @Override
         public void run() {
@@ -391,6 +417,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 peer_thread_entered_counter.await();
                 // now we wait for all response index to be unlocked by their respective threads and thus become available
                 // we consequently will lock them so that we ensure that they do not change during their processing in this thread
+                // lest another request happens for some reason (which should not since the search button is unclickable)
                 int peers = spal.size();
                 for(int i=0;i<peers;i++){
                     SearchingNodeFragment.mutexPeerResponseDecJson[i].lock();
@@ -414,12 +441,12 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 }
 
                 // log the RESPONSE RATE
-                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Query Response Rate = [" + responded + " / " + peers + "]",(peers==responded)?Color.GREEN:Color.RED));
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Response Rate = [" + responded + " / " + peers + "]",(peers==responded)?Color.GREEN:Color.RED));
 
-                if(responded == 0){
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Forced peer discovery thread restart! Cause: 0 responses to query.",Color.DKGRAY));
+                // If we have 0 answers and this is the first time we have tried to get answers.
+                if(responded == 0 && !this.isReAttempt){
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Forced peer discovery thread restart! Cause: All peers unresponsive to query.",Color.RED));
 
-                    // TODO:
                     // - unlock everything that this thread has locked DONE
                     LoggingFragment.mutexTvdAL.unlock();
                     for(int i=0;i<peers;i++){
@@ -427,14 +454,170 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     }
 
                     // - restart the peer discover thread
+                    peer_rediscovery_thread_entered = new CountDownLatch(1); // we will await for 1 attempt from the new thread to be made
+                    P2PThreadExplicitRestart();
+                    peer_rediscovery_thread_entered.await();
 
-                    // - use a countdown lock to check that indeed we have received a new answer form the P2P server
+                    // - we lock the new peers
+                    mutextServingPeerArrayList.lock();
+
+                    // if the new peer array has nothing in it
+                    if(ServingPeerArrayList.size() == 0){
+                        LoggingFragment.mutexTvdAL.lock();
+                        LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No peers from forced peer discovery request. Direct request to signing server to retrieve answer to search.",Color.DKGRAY));
+                        byte [] decJson = null;
+                        try {
+                            decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
+                            if (decJson == null) {
+                                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server No Response!", Color.RED));
+                                getActivity().runOnUiThread(
+                                        new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                Toast.makeText(getContext(), "No Peers. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                            }
+                                        }
+                                );
+                            } else {
+                                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DIRECT REQUEST (no peers): Signing Server Responded.", Color.GREEN));
+                                byte [] copyDecJson = decJson;
+                                getActivity().runOnUiThread(
+                                        new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                apply_search_result(copyDecJson);
+                                            }
+                                        }
+                                );
+                            }
+                        }
+                        catch (Exception e){
+                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server error on communication!", Color.RED));
+                            getActivity().runOnUiThread(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            Toast.makeText(getContext(), "No Peers. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                        }
+                                    }
+                            );
+                        }
+
+                        // unlocking all resources we have locked
+                        mutextServingPeerArrayList.unlock();
+                        LoggingFragment.mutexTvdAL.unlock();
+
+                        getActivity().runOnUiThread(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        search_button.setClickable(true);
+                                        search_button.setText("SEARCH");
+                                    }
+                                }
+                        );
+
+                        return;
+                    }
+
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("Retrying search query with NEW peers.",Color.DKGRAY));
+                    LoggingFragment.mutexTvdAL.unlock();
+
                     // - if the new peer array list is not null call for a second try (basically do what happens when we click the button over again)
-                    // - call this function for second try (have a boolean to check that it is a second try)
-                    // - a second try should not retry with peers but instead directly connect to the signing server and log this.
+                    // In the case we have multiple peers that can answer our query
+                    // We start the Threads for requesting answers from these peers.
+                    peer_thread_entered_counter = new CountDownLatch(ServingPeerArrayList.size());
+                    for(int i=0;i<ServingPeerArrayList.size();i++){
+                        // making sure the answer is null before we call the peer interaction thread
+                        SearchingNodeFragment.peerResponseDecJson[i] = null;
+                        PeerInteractions.PeerInteractionThread pi = new PeerInteractions.PeerInteractionThread(i,
+                                ServingPeerArrayList.get(i).PeerIP,
+                                ServingPeerArrayList.get(i).PeerPort,
+                                APICallBytesClientQuery
+                        );
+                        pi.start();
+                    }
+
+                    // We start our thread meant for receiving all the answers one by one
+                    // We pass the current serving list as an argument for the logging by this thread
+                    ResponseCollectionThread rct = new ResponseCollectionThread(ServingPeerArrayList,true,APICallBytesClientQuery);
+                    rct.start();
+
+                    // unlocking the resources
+                    mutextServingPeerArrayList.unlock();
+                    // we can return with no fear since for the button to be clickable again then it means that the request
+                    // was completed and the rct finished up processing the results
+                    return;
+
                 }
+                if(responded == 0 && this.isReAttempt){
+
+
+                    // - we lock the new peers
+                    // mutextServingPeerArrayList.lock();
+
+                    // if the new peer array has nothing in it
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("New peers were also unresponsive. Directly contacting the signing server.",Color.DKGRAY));
+                    byte [] decJson = null;
+                    try {
+                        decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
+                        if (decJson == null) {
+                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server No Response!", Color.RED));
+                            getActivity().runOnUiThread(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            Toast.makeText(getContext(), "Peers unresponsive. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                        }
+                                    }
+                            );
+                        }
+                        else {
+                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DIRECT REQUEST (unresponsive peers): Signing Server Responded.", Color.GREEN));
+                            byte [] copyDecJson = decJson;
+                            getActivity().runOnUiThread(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            apply_search_result(copyDecJson);
+                                        }
+                                    }
+                            );
+                        }
+                    }
+                    catch (Exception e){
+                        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server error on communication!", Color.RED));
+                        getActivity().runOnUiThread(
+                                new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        Toast.makeText(getContext(), "Peers unresponsive. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                    }
+                                }
+                            );
+                    }
+
+                    // unlocking all resources we have locked
+                    // mutextServingPeerArrayList.unlock();
+                    LoggingFragment.mutexTvdAL.unlock();
+
+                    getActivity().runOnUiThread(
+                            new Runnable() {
+                                    @Override
+                                public void run() {
+                                    search_button.setClickable(true);
+                                    search_button.setText("SEARCH");
+                                }
+                            }
+                    );
+
+                    return;
+                }
+
                 if(!consensus){
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("No consensus reached! Using answer of peer with index " + first_reponded + ".",Color.RED));
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Answers from peers are ALL signed from signing server. However there are differences in the answers. We show peer " + first_reponded + "'s response.",Color.DKGRAY));
                     Log.d("ResponseCollectionThread","ERROR: Not all responses received consent with one another");
                 }
                 else {
@@ -482,6 +665,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 );
                 Log.d("ResponseCollectionThread","ERROR!");
             }
+
         }
     }
 

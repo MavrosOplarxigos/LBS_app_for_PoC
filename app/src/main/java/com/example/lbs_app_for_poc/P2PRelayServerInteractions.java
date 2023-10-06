@@ -43,10 +43,18 @@ public class P2PRelayServerInteractions {
         public static final int QUERY_INTERVAL_MSEC = 20 * 1000;
         public static final int QUERY_SOCKET_TIMEOUT = 5000;
         public boolean explicit_search_request; // this is not static so that the previous instances of the thread kill themselves explicitly
+        public boolean is_reatempt;
 
         public PeerDiscoveryThread(LBSEntitiesConnectivity lbsEC){
             this.lbsEntitiesConnectivity = lbsEC;
             this.explicit_search_request = false;
+            this.is_reatempt = false;
+        }
+
+        public PeerDiscoveryThread(LBSEntitiesConnectivity lbsEC, boolean isReAttempt){
+            this.lbsEntitiesConnectivity = lbsEC;
+            this.explicit_search_request = false;
+            this.is_reatempt = isReAttempt;
         }
 
         @Override
@@ -98,6 +106,11 @@ public class P2PRelayServerInteractions {
                         }
                         SearchingNodeFragment.mutextServingPeerArrayList.unlock();
 
+                        if(this.is_reatempt && SearchingNodeFragment.peer_rediscovery_thread_entered != null){
+                            SearchingNodeFragment.peer_rediscovery_thread_entered.countDown();
+                            this.is_reatempt = false;
+                        }
+
                         Thread.sleep(QUERY_INTERVAL_MSEC);
                         PeerDiscoverySocket.close();
                         PeerDiscoverySocket = new Socket();
@@ -107,6 +120,10 @@ public class P2PRelayServerInteractions {
                 catch (Exception e){
                     Log.d("Peer discovery: ","Could not retrieve new peers!");
                     e.printStackTrace();
+                    if(this.is_reatempt && SearchingNodeFragment.peer_rediscovery_thread_entered != null){
+                        SearchingNodeFragment.peer_rediscovery_thread_entered.countDown();
+                        this.is_reatempt = false;
+                    }
                     // maybe for some reason the server is flooded so we will wait some time before reconnecting to it
                     try{
                         Thread.sleep(QUERY_INTERVAL_MSEC);
