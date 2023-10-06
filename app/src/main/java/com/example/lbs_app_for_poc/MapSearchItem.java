@@ -19,8 +19,7 @@ public class MapSearchItem {
     public Context context;
     public int search_diameter;
     public LatLng map_center;
-    // TODO: use this in the future to specify search type
-    // public String search_type = "";
+
     public String keyword;
     public String search_method_type = "nearbysearch";
     public String result_format = "json";
@@ -66,7 +65,6 @@ public class MapSearchItem {
 
         Log.d("API CALL STRING","Radius specified");
 
-        // TODO: add search type by searching for the available type strings in the users input
         // link to the types https://developers.google.com/maps/documentation/places/web-service/supported_types
         // call += "&";
 

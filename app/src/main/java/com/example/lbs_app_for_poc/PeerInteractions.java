@@ -135,7 +135,6 @@ public class PeerInteractions {
             try {
                 // Changed from:
                 // APICallBytesSignedClientQuery = InterNodeCrypto.signByteArrayWithPrivateKey(APICallEncryptedBytesClientQuery, my_key);
-                // To: (TODO: fix on the TCP Server maybe to sign the raw request instead to save memory)
                 APICallBytesSignedClientQuery = InterNodeCrypto.signByteArrayWithPrivateKey(APICallBytesClientQuery, my_key);
             }
             catch (Exception e){

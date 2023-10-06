@@ -50,7 +50,6 @@ public class AnotherFileChooser {
                     return Environment.getExternalStorageDirectory() + "/" + split[1];
                 }
 
-                // TODO handle non-primary volumes
                 Log.d("AFC","It's non-primary volume!");
 
             }

@@ -416,7 +416,6 @@ public class FirstFragment extends Fragment {
                     );
                 }
             } catch (Exception e) {
-                // TODO: Give more verbose reason here why the credentials are not loaded successfully!
                 getActivity().runOnUiThread(
                         new Runnable() {
                             @Override

@@ -218,9 +218,6 @@ public class InterNodeCrypto {
 
     }
 
-    /*
-    * TODO: Implement this function to check certificate issuer and CN and private key matching cert
-    * */
     public static boolean checkMyCreds() throws NoSuchAlgorithmException, NoSuchProviderException, NoSuchPaddingException, IllegalBlockSizeException, InvalidKeySpecException, BadPaddingException, InvalidKeyException, SignatureException {
         return checkCreds(InterNodeCrypto.CA_cert,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
     }
@@ -437,9 +434,6 @@ public class InterNodeCrypto {
         return getCertDetails(temp_cert);
     }
 
-    /*
-    TODO: Implement this function so that the details of the certificate are return as a String (issuer, owner, etc.)
-    */
     public static String getCertDetails(@NonNull X509Certificate certificate){
         if (certificate.getSubjectDN() == null){
             Log.d("CRED DETAILS", "This certificate has no principal! Attempting to send issuer instead!");

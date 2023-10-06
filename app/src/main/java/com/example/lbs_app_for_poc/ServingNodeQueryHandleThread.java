@@ -20,8 +20,11 @@ import java.security.PrivateKey;
 import java.security.SignatureException;
 import java.security.cert.CertificateEncodingException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.concurrent.locks.ReentrantLock;
 
 import javax.crypto.BadPaddingException;
@@ -30,13 +33,50 @@ import javax.crypto.NoSuchPaddingException;
 
 public class ServingNodeQueryHandleThread extends Thread {
 
-    // TODO: Continue the implementation of this frequency monitoring system to avoid flooding
-    public static final int MAX_SERVICES_PER_MINUTE_PER_PSEUDO_CERT = 5;
     // Map so that we serve at most MAX_SERVICES_PER_MINUTE_PER_PSEUDO_CERT
     public static HashMap< String , ServiceDetails > recentlyServedNodes;
     // The class below is used to store data that showcase how often a certain pseudo cert
     // has been used from a querying node and what service per minute rate it has received
     public class ServiceDetails{
+
+        Queue<Long> requestTimestampQueue;
+        public static final int MAX_SERVICES_PER_MINUTE_PER_PSEUDO_CERT = 5;
+
+        ServiceDetails(){
+            this.requestTimestampQueue = new LinkedList<>();
+            long timestamp = System.currentTimeMillis();
+            requestTimestampQueue.offer(timestamp);
+        }
+
+        // @returns true if we should carry out the request (not too frequest) and false otherwise.
+        public boolean addNewRequest(){
+            long timestamp = System.currentTimeMillis();
+            if(requestTimestampQueue.size() >= MAX_SERVICES_PER_MINUTE_PER_PSEUDO_CERT){
+
+                Long new_timestamp = new Long(timestamp);
+                if(moreThanAMinutePassed(requestTimestampQueue.peek(),new_timestamp)){
+                    requestTimestampQueue.remove();
+                    requestTimestampQueue.offer(new_timestamp);
+                    return true;
+                }
+                else{
+                    return false;
+                }
+
+            }
+            requestTimestampQueue.offer(timestamp);
+            return true;
+        }
+
+        public boolean moreThanAMinutePassed(Long time1, Long time2){
+            long tim1 = time1.longValue();
+            long tim2 = time2.longValue();
+            if(tim2-tim1>60000){
+                return true;
+            }
+            return false;
+        }
+
     }
 
     public String peerIP;
@@ -82,9 +122,9 @@ public class ServingNodeQueryHandleThread extends Thread {
             safe_exit("Failure on the Hello phase",null,socket);
             return;
         }
-        LoggingFragment.mutexTvdAL.lock();
+        /*LoggingFragment.mutexTvdAL.lock();
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello SUCCESS with: " + peer_name + "@ " + peerIP, Color.GREEN ) );
-        LoggingFragment.mutexTvdAL.unlock();
+        LoggingFragment.mutexTvdAL.unlock();*/
 
         DataInputStream dis = null;
         DataOutputStream dos = null;
@@ -136,9 +176,9 @@ public class ServingNodeQueryHandleThread extends Thread {
         }
         int OriginalQueryArrayLength = TCPhelpers.byteArrayToIntBigEndian(OriginalQueryArraySizeByes);
 
-        LoggingFragment.mutexTvdAL.lock();
+        /*LoggingFragment.mutexTvdAL.lock();
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Expected Original Query Size: " + OriginalQueryArrayLength , Color.DKGRAY ) );
-        LoggingFragment.mutexTvdAL.unlock();
+        LoggingFragment.mutexTvdAL.unlock();*/
 
         ci++;
         if( (char)(bytesClientMessage[ci]) != transmission_del ){
@@ -228,7 +268,7 @@ public class ServingNodeQueryHandleThread extends Thread {
             byte [] AnswerSizeDisclosureBytes = TCPhelpers.intToByteArray(ServingPeerAnswerFwd.length);
             dos.write(AnswerSizeDisclosureBytes);
 
-            LoggingFragment.mutexTvdAL.lock();
+            /*LoggingFragment.mutexTvdAL.lock();
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD Reply size length: " + ServingPeerAnswerFwd.length, Color.MAGENTA ) );
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD Reply bytes: " + TCPhelpers.byteArrayToDecimalStringFirst10(ServingPeerAnswerFwd), Color.MAGENTA ) );
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD ENC_ANS_LEN : " + enc_ans_len, Color.MAGENTA ) );
@@ -236,7 +276,7 @@ public class ServingNodeQueryHandleThread extends Thread {
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD QA_CONCATENATED LEN: " + ssqa_len, Color.MAGENTA ) );
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD QA_CONCATENATED: " + TCPhelpers.byteArrayToDecimalStringFirst10(ss_answer[1]), Color.MAGENTA ) );
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD DEC_ANSWER_LENGTH_BYTES: " + TCPhelpers.byteArrayToDecimalStringFirst10(ss_answer[2]), Color.MAGENTA ) );
-            LoggingFragment.mutexTvdAL.unlock();
+            LoggingFragment.mutexTvdAL.unlock();*/
 
             dos.write(ServingPeerAnswerFwd);
 
@@ -254,11 +294,11 @@ public class ServingNodeQueryHandleThread extends Thread {
         byte [] raw_query = InterNodeCrypto.decryptWithKey(fields[0],my_key,OriginalQueryArrayLength);
         Log.d("SNQHT","The decrypted RAW_QUERY is " + new String(raw_query, StandardCharsets.UTF_8) );
 
-        LoggingFragment.mutexTvdAL.lock();
+        /*LoggingFragment.mutexTvdAL.lock();
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Original API CALL: " + TCPhelpers.byteArrayToDecimalString(raw_query), Color.DKGRAY ) );
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("API CALL Signature: " + TCPhelpers.byteArrayToDecimalString(fields[1]), Color.DKGRAY ) );
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails( "Certificate: " + TCPhelpers.byteArrayToDecimalString(peer_cert.getEncoded()) , Color.DKGRAY ) );
-        LoggingFragment.mutexTvdAL.unlock();
+        LoggingFragment.mutexTvdAL.unlock();*/
 
         Log.d("SNQHT_QUERY_IMPORTANT","The length of the signatuere is: " + fields[1].length );
         Log.d("SNQHT_QUERY_IMPORTANT","The signatuere is: " + TCPhelpers.byteArrayToDecimalString(fields[1]) );
@@ -266,9 +306,9 @@ public class ServingNodeQueryHandleThread extends Thread {
         // Check signature
         boolean signature_ok = CryptoChecks.isSignedByCert(raw_query,fields[1],peer_cert);
 
-        LoggingFragment.mutexTvdAL.lock();
+        /*LoggingFragment.mutexTvdAL.lock();
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("signature check serving node = " + signature_ok, Color.DKGRAY ) );
-        LoggingFragment.mutexTvdAL.unlock();
+        LoggingFragment.mutexTvdAL.unlock();*/
 
         if( !signature_ok ){
             Log.d(debug_tag(),"The signature of the Client Query is not valid!");
@@ -400,6 +440,9 @@ public class ServingNodeQueryHandleThread extends Thread {
             peer_cert = InterNodeCrypto.CertFromByteArray(fieldsClientHello[1]);
             peer_name = peer_cert.getSubjectDN().toString();
             if( !check_receny(peer_name) ){
+                LoggingFragment.mutexTvdAL.lock();
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Rejected request from " + peer_name + " (too frequent requests)", Color.MAGENTA ) );
+                LoggingFragment.mutexTvdAL.unlock();
                 safe_exit("There have been too many requests recently from " + peer_name,null,s);
                 return false;
             }
@@ -440,7 +483,14 @@ public class ServingNodeQueryHandleThread extends Thread {
     }
 
     // This is the function that will work with the HashMap to check for very frequent querying nodes
+    // @returns true if the peer requesting for something hasn't done so more that 5 times in the last minute
     public boolean check_receny(String pseudo_name){
+        if(recentlyServedNodes.containsKey(pseudo_name)){
+            boolean not_frequent_request = recentlyServedNodes.get(pseudo_name).addNewRequest();
+            return not_frequent_request;
+        }
+        ServiceDetails new_record = new ServiceDetails();
+        recentlyServedNodes.put(pseudo_name,new_record);
         return true;
     }
 
@@ -451,7 +501,7 @@ public class ServingNodeQueryHandleThread extends Thread {
     public void safe_exit(String message, Exception e, Socket s){
         Log.d("Serving Node Query Handle Thread -> Peer " + peerIP,message);
         LoggingFragment.mutexTvdAL.lock();
-        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Failed to server " + peerIP , Color.RED ) );
+        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Failed to serve: " + peerIP , Color.RED ) );
         LoggingFragment.mutexTvdAL.unlock();
         if(e!=null) {
             e.printStackTrace();

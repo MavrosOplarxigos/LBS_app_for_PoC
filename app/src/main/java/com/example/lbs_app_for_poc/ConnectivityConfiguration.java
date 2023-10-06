@@ -92,7 +92,6 @@ public class ConnectivityConfiguration extends Fragment {
             for(InetAddress addr : all_addresses){
                 if(addr.toString().contains(":")){
                     // then it should be a MAC address
-                    // TODO: find a better way to check if an address is a MAC-ADDRESS
                     continue;
                 }
                 else {
@@ -117,7 +116,6 @@ public class ConnectivityConfiguration extends Fragment {
         // if it's null we fill it in
         if(my_peer_ip_address == null){
             try {
-                // TODO: if we are going to use a coordinator then here we must request from him a new peer
                 my_peer_ip_address = InetAddress.getByName("127.0.0.1");
             } catch (UnknownHostException e) {
                 Log.d("NET CONFIG","Peer address not found from given name!");
@@ -137,7 +135,6 @@ public class ConnectivityConfiguration extends Fragment {
 
         // Displaying peer's port
         if(peer_port == -1){
-            // TODO: if we are going to use a coordinator then here we must request from him a new peer
             peer_port = 55777;
         }
         EditText peer_port_TV = (EditText) view.findViewById(R.id.peerTCPport_value);
@@ -202,8 +199,6 @@ public class ConnectivityConfiguration extends Fragment {
                         }
 
                         // Here we consider the server is already ON
-                        // TODO: Fix code so that we don't check for delimeter after the for loop exits when reading a field unless necessary
-                        // TODO: Add condition in for loops that we don't overstep the byte array we are reading from
                         try {
 
                             // COMMUNICATION PROTOCOL START
@@ -405,7 +400,6 @@ public class ConnectivityConfiguration extends Fragment {
         // that way we don't need to
         // update the user on the status of the connectivity with the connectivity status text view
 
-        // TODO: Check here if we have asked for a new peer from the coordinator then we should try to establish connectivity as a client.
         // this  check should not be triggered by the clicking of the Save button but rather should be done automatically initially
         // After the first time we should only ask for a new peer from the coordinator if and only if the connectivity is lost
         // this request should be done when the user makes a new search for example

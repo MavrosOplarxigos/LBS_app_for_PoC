@@ -186,7 +186,7 @@ public class CredentialsSelection extends Fragment {
         public void selectFile(){
             // Open this activity to select the file
             // the important part with this was the */* that allows you to choose any file
-            GetContent.launch("*/*"); // TODO: find better location to begin with rather than the root directory of the filesystem (Maybe docs)
+            GetContent.launch("*/*");
             Log.d("CRED FILE LOADING","Exiting the selectFile function!");
         }
 
@@ -301,7 +301,6 @@ public class CredentialsSelection extends Fragment {
                 e.printStackTrace();
             }
             MYkeydetailsTV.setBackgroundColor(Color.GREEN);
-            // TODO: Add details for key (maybe the name on the key)
             MYkeydetailsTV.setText( "Loaded " + InterNodeCrypto.my_key.getAlgorithm() + " key!");
         }
 

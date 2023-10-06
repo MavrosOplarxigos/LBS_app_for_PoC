@@ -99,7 +99,6 @@ public class TCPhelpers {
             for (InetAddress addr : all_addresses) {
                 if (addr.toString().contains(":")) {
                     // then it should be a MAC address
-                    // TODO: find a better way to check if an address is a MAC-ADDRESS
                     continue;
                 } else {
                     Log.d("MYIPR", "IP address found for wlan0 " + addr.toString());

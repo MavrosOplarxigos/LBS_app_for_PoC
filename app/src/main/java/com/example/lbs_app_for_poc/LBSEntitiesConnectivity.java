@@ -86,7 +86,7 @@ public class LBSEntitiesConnectivity implements Serializable {
             this.MY_REAL_NODE_NAME = saved.MY_REAL_NODE_NAME;
         }
         else {
-            this.ENTITIES_MANAGER_IP = null; // TODO: Hardcode this value instead maybe?
+            this.ENTITIES_MANAGER_IP = null;
             this.MY_REAL_NODE_NAME = null;
         }
     }

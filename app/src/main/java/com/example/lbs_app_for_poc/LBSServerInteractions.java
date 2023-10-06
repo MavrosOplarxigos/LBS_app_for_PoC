@@ -28,7 +28,6 @@ public class LBSServerInteractions {
             connection.setRequestMethod("GET");
 
             // Here we can print the certificate chain of the server
-            // TODO: Discover why when trying to just print the certificate chain the connection establishment fails
             /*
             String server_certificat_chain = "";
             for(int i=0;i< connection.getServerCertificates().length; i++){
@@ -38,9 +37,7 @@ public class LBSServerInteractions {
             Log.d("API CALL EXEC",server_certificat_chain);
             */
 
-            // TODO: As the intermediate node see if I can extract the encrypted version of the answer and forward that to the search initiator
             // so along with the my own keys it can verify the integrity of the answer.
-            // TODO: Ask Hongyu if here I could simply fabricate the action of the LBS signing the response it sends
             // to the intermediate node and therefore the integrity of the answer could also be proven
             // because with the HTTP connection and a BufferedReader it doesn't seem that I can returned the encrypted
             // answer. Instead it seems that it is read in plaintext.

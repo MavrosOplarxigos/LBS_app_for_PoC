@@ -107,8 +107,6 @@ public class TCPServerControlClass{
 
         while(true){
 
-            // TODO: Fix code so that we don't check for delimeter after the for loop exits when reading a field unless necessary
-            // TODO: Add condition in for loops that we don't overstep the byte array we are reading from
             try {
 
                 // COMMUNICATION PROTOCOL START
@@ -231,7 +229,6 @@ public class TCPServerControlClass{
                 if(!checkFieldsClientHello(fieldsClientHello,"Server")){
                     Log.d("TCP server","The received fields are incorrect! Closing the connection.");
                     socket.close();
-                    // TODO: Add message for timestamp being too old
                     continue;
                 }
                 Log.d("TCP server","Client Hello: The received fields are CORRECT!");
@@ -275,7 +272,6 @@ public class TCPServerControlClass{
                 // OK now the client should change its status to be connected
 
                 // We are going to keep answering QUERIES until the client says BYE
-                // TODO: Add more responsiveness from server side on faulty queries from client
                 while(true) {
 
                     // 3) CLIENT MESSAGE: RECEIVE A MESSAGE FROM CLIENT (QUERY,BYE)
@@ -318,7 +314,6 @@ public class TCPServerControlClass{
                         isQuery = true;
                     }
                     else if( Arrays.equals(ClientMessageOption, "BYE".getBytes()) ){
-                        // TODO: Verify that the BYE received is indeed from the client by having one more field (i.e. the nonce)
                         Log.d("TCP server","The client has sent a BYE thus terminating the connection!");
                         break;
                     }
@@ -327,7 +322,6 @@ public class TCPServerControlClass{
                         break;
                     }
                     else{
-                        // TODO: Make server return a specific answer indicating to the client that the chosen option is not supported
                         Log.d("TCP server","Client Message Option unrecognized. Option = " + new String(ClientMessageOption,StandardCharsets.UTF_8));
                         break;
                     }
@@ -424,7 +418,6 @@ public class TCPServerControlClass{
                         if(answer == null){
                             Log.d("API EXEC RESULT","The JSONObject is null!\n");
                             // Toast.makeText(getContext(), "No response from LBS server!", Toast.LENGTH_SHORT).show();
-                            // TODO: send [NO_ANSWER] [NONCE+1*NUM_OR_QUERIES_SO_FAR]
                             return;
                         }
                         else {
@@ -504,8 +497,6 @@ public class TCPServerControlClass{
                         // 4.3) SERVER RESPONSE: SEND THE ACTUAL RESPONSE BYTES TO THE CLIENT
                         // [EncryptedJSONObjectAnswerByteArraySize] |
                         // [EncryptedJSONObjectAnswerByteArray] | [EncryptedJSONObjectAnswerByteArraySigned]
-
-                        // TODO: VERY IMPORTANT STEP ALSO ADD NOW THE STEPS FOR SENDING THE SIGNATURE OF THE QUERRY STRING CONCATENATED WITH
 
                         Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArray size is " + EncryptedJSONObjectAnswerByteArray.length );
                         Log.d("TCP Server","The EncryptedJSONObjectAnswerByteArraySize is " + new String(EncryptedJSONObjectAnswerByteArraySize,StandardCharsets.UTF_8) );

@@ -10,7 +10,6 @@ import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECFieldElement;
 import org.bouncycastle.math.ec.ECFieldElement.Fp;
 
-// TODO: This class is not used figure out how to use it in the future to facilitate comparing the ECPrivate Key to ECPublic Key to see if they are correspoinding to one another.
 public class ECPointConverter {
 
     public static org.bouncycastle.math.ec.ECPoint getBouncyCastleECPointFromJavaSecurityPublic(java.security.spec.ECPoint javaEcPoint, java.security.interfaces.ECPublicKey ecPublicKey) {
@@ -54,7 +53,7 @@ public class ECPointConverter {
 
     public static org.bouncycastle.math.ec.ECCurve getECCurveFromPrivateKey(java.security.interfaces.ECPrivateKey privateKey) {
         return null;
-        // return EC5Util.convertCurve(privateKey.getParams().getCurve()); // TODO: research why this function gets stuck???
+        // return EC5Util.convertCurve(privateKey.getParams().getCurve());
         /*java.security.spec.ECParameterSpec ecSpec = privateKey.getParams();
         String curveName = ecSpec.getCurve().toString();
         org.bouncycastle.jce.spec.ECNamedCurveParameterSpec namedCurveSpec = org.bouncycastle.jce.ECNamedCurveTable.getParameterSpec(curveName);
@@ -83,7 +82,7 @@ public class ECPointConverter {
 //        return curve;
 
         /*java.security.spec.ECParameterSpec ecSpec = publicKey.getParams();
-        org.bouncycastle.jce.spec.ECNamedCurveParameterSpec namedCurveSpec = org.bouncycastle.jce.ECNamedCurveTable.getParameterSpec(ecSpec.getCurve().toString()); // TODO: Why does calling this function gets stuck in infinite loop?
+        org.bouncycastle.jce.spec.ECNamedCurveParameterSpec namedCurveSpec = org.bouncycastle.jce.ECNamedCurveTable.getParameterSpec(ecSpec.getCurve().toString());
         return namedCurveSpec.getCurve();*/
 
         // return EC5Util.convertCurve(publicKey.getParams().getCurve());
