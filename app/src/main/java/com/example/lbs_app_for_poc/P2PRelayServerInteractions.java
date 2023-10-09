@@ -275,7 +275,7 @@ public class P2PRelayServerInteractions {
     public static class AvailabilityThread extends Thread{
 
         LBSEntitiesConnectivity lbsEC;
-        public static final int AVAILABILITY_DISCLOSURE_INTERVAL_MSEC = 20 * 1000;
+        public static final int AVAILABILITY_DISCLOSURE_INTERVAL_MSEC = 10 * 1000;
         public static final int AVAILABILITY_SOCKET_TIMEOUT = 5000;
         public String last_disclosure;
 
@@ -397,18 +397,27 @@ public class P2PRelayServerInteractions {
         // We are using the CA certificate since we consider the CA and LBS entities to be the same actors
         byte [] EncDisclosure = InterNodeCrypto.encryptWithPeerKey(Disclosure,InterNodeCrypto.CA_cert);
         byte [] EncDisclosureLength = TCPhelpers.intToByteArray(EncDisclosure.length);
-        CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestamp();
-        byte [] SignedTimestampLength = TCPhelpers.intToByteArray(cryptoTimestamp.signed_timestamp.length);
+        // CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestamp();
+        // byte [] SignedTimestampLength = TCPhelpers.intToByteArray(cryptoTimestamp.signed_timestamp.length);
+        byte [] SignedDisclosure = InterNodeCrypto.signByteArrayWithPrivateKey(Disclosure,InterNodeCrypto.my_key);
+        byte [] SignedDisclosureLength = TCPhelpers.intToByteArray(SignedDisclosure.length);
 
         ByteArrayOutputStream baosClientAvailability = new ByteArrayOutputStream();
         // [ EDISCLOSURE LEN ] | [    EDISCLOSURE  ] | [ TIMESTAMP ] | [ SIGNED TIMESTAMP LEN ] | [      SIGNED TIMESTAMP       ]
         // [       4         ] | [ EDISCLOSURE LEN ] | [     8     ] | [          4           ] | [   SIGNED TIMESTAMP LENGTH   ]
 
+        // change to
+        // [ EDISCLOSURE LEN ] | [    EDISCLOSURE  ] | [ SIGNED DISCLOSURE LEN ] | [    SIGNED DISCLOSURE     ]
+        // [       4         ] | [ EDISCLOSURE LEN ] | [          4            ] | [ SIGNED DISCLOSURE LENGTH ]
+
+
         baosClientAvailability.write(EncDisclosureLength);
         baosClientAvailability.write(EncDisclosure);
-        baosClientAvailability.write(cryptoTimestamp.timestamp);
+        /*baosClientAvailability.write(cryptoTimestamp.timestamp);
         baosClientAvailability.write(SignedTimestampLength);
-        baosClientAvailability.write(cryptoTimestamp.signed_timestamp);
+        baosClientAvailability.write(cryptoTimestamp.signed_timestamp);*/
+        baosClientAvailability.write(SignedDisclosureLength);
+        baosClientAvailability.write(SignedDisclosure);
 
         byte [] ClientAvailability = baosClientAvailability.toByteArray();
 

@@ -34,7 +34,8 @@ import javax.crypto.NoSuchPaddingException;
 public class ServingNodeQueryHandleThread extends Thread {
 
     // Map so that we serve at most MAX_SERVICES_PER_MINUTE_PER_PSEUDO_CERT
-    public static HashMap< String , ServiceDetails > recentlyServedNodes;
+    public static HashMap< String , ServiceDetails > recentlyServedNodes = new HashMap<>();
+
     // The class below is used to store data that showcase how often a certain pseudo cert
     // has been used from a querying node and what service per minute rate it has received
     public class ServiceDetails{
@@ -95,10 +96,12 @@ public class ServingNodeQueryHandleThread extends Thread {
     public PrivateKey my_key = null;
     public X509Certificate peer_cert = null;
     public String peer_name = null;
+    public boolean peerWasTooFrequent;
 
     public int QUERYING_PEER_CONNECTION_TIMEOUT_HELLO = 1000;
 
     public ServingNodeQueryHandleThread(Socket socket){
+        peerWasTooFrequent = false;
         this.socket = socket;
         LoggingFragment.mutexTvdAL.lock();
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepted Service Request from " + this.socket.getInetAddress().getHostAddress() , Color.MAGENTA ) );
@@ -116,10 +119,15 @@ public class ServingNodeQueryHandleThread extends Thread {
 
         boolean introductionDone = configure_peer_connectivity(socket);
         if(!introductionDone){
-            LoggingFragment.mutexTvdAL.lock();
-            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with: " + peerIP, Color.RED ) );
-            LoggingFragment.mutexTvdAL.unlock();
-            safe_exit("Failure on the Hello phase",null,socket);
+            if(!peerWasTooFrequent) {
+                LoggingFragment.mutexTvdAL.lock();
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with: " + peerIP, Color.RED));
+                LoggingFragment.mutexTvdAL.unlock();
+                safe_exit("Failure on the Hello phase", null, socket);
+            }
+            else{
+                safe_close_socket(socket);
+            }
             return;
         }
         /*LoggingFragment.mutexTvdAL.lock();
@@ -439,11 +447,20 @@ public class ServingNodeQueryHandleThread extends Thread {
             // Saving into variables the data that we need from ClientHello
             peer_cert = InterNodeCrypto.CertFromByteArray(fieldsClientHello[1]);
             peer_name = peer_cert.getSubjectDN().toString();
-            if( !check_receny(peer_name) ){
-                LoggingFragment.mutexTvdAL.lock();
-                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Rejected request from " + peer_name + " (too frequent requests)", Color.MAGENTA ) );
-                LoggingFragment.mutexTvdAL.unlock();
-                safe_exit("There have been too many requests recently from " + peer_name,null,s);
+            try {
+                if (!check_receny(peer_name)) {
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Rejected request from " + peer_name + " (too frequent requests)", Color.MAGENTA));
+                    LoggingFragment.mutexTvdAL.unlock();
+                    Log.d(debug_tag(),"There have been too many requests recently from " + peer_name);
+                    safe_close_socket(s);
+                    peerWasTooFrequent = true;
+                    // safe_exit("There have been too many requests recently from " + peer_name, null, s);
+                    return false;
+                }
+            }
+            catch (Exception e){
+                safe_exit("Could not check recency of requests from peer " + peer_name,e,s);
                 return false;
             }
         }
@@ -485,13 +502,21 @@ public class ServingNodeQueryHandleThread extends Thread {
     // This is the function that will work with the HashMap to check for very frequent querying nodes
     // @returns true if the peer requesting for something hasn't done so more that 5 times in the last minute
     public boolean check_receny(String pseudo_name){
-        if(recentlyServedNodes.containsKey(pseudo_name)){
-            boolean not_frequent_request = recentlyServedNodes.get(pseudo_name).addNewRequest();
-            return not_frequent_request;
+        // return true;
+        try {
+            if (recentlyServedNodes.containsKey(pseudo_name)) {
+                boolean not_frequent_request = recentlyServedNodes.get(pseudo_name).addNewRequest();
+                return not_frequent_request;
+            }
+            ServiceDetails new_record = new ServiceDetails();
+            recentlyServedNodes.put(pseudo_name, new_record);
+            return true;
         }
-        ServiceDetails new_record = new ServiceDetails();
-        recentlyServedNodes.put(pseudo_name,new_record);
-        return true;
+        catch (Exception e){
+            Log.d("HashMapIssue","Error: There is something wrong witht he hash map of recency checks!");
+            e.printStackTrace();
+            return true;
+        }
     }
 
     public String debug_tag(){
