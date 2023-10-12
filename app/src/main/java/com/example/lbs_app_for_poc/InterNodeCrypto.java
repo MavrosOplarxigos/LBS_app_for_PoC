@@ -335,6 +335,23 @@ public class InterNodeCrypto {
         }
     }
 
+    public static CryptoTimestamp makeTimstampSignedWithConcatenationWithKey(CryptoTimestamp old_timestamp, byte [] toConcatenate, PrivateKey my_key) throws NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
+        CryptoTimestamp answer = new CryptoTimestamp();
+        try{
+            answer.timestamp = old_timestamp.timestamp;
+            int concatenation_size = toConcatenate.length + answer.timestamp.length;
+            byte [] concatenation = new byte[concatenation_size];
+            System.arraycopy(answer.timestamp,0,concatenation,0,answer.timestamp.length);
+            System.arraycopy(toConcatenate,0,concatenation,answer.timestamp.length,toConcatenate.length);
+            answer.signed_timestamp_conncatenated_with_info = signByteArrayWithPrivateKey(concatenation,my_key);
+            return answer;
+        }
+        catch (Exception e){
+            Log.d("makeTimstampSignedWithConcatenationWithKey","Could not sign the timestamp byte array!");
+            throw e;
+        }
+    }
+
     public static CryptoTimestamp getSignedTimestampWithConcatenationWithKey(byte [] toConcatenate, PrivateKey my_key) throws NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
         CryptoTimestamp answer = new CryptoTimestamp();
         try {

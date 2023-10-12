@@ -75,6 +75,7 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import javax.net.ssl.HttpsURLConnection;
+import java.util.Random;
 
 public class SearchingNodeFragment extends Fragment implements OnMapReadyCallback {
 
@@ -358,13 +359,17 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // In the case we have multiple peers that can answer our query
                         // We start the Threads for requesting answers from these peers.
                         peer_thread_entered_counter = new CountDownLatch(ServingPeerArrayList.size());
+                        Random random_pseudo = new Random();
+                        int pseudonym_choice = random_pseudo.nextInt(100);
                         for(int i=0;i<ServingPeerArrayList.size();i++){
                             // making sure the answer is null before we call the peer interaction thread
                             SearchingNodeFragment.peerResponseDecJson[i] = null;
+                            // instead of i (the serving peer index) we use a random pseudo certificate for all guys
                             PeerInteractions.PeerInteractionThread pi = new PeerInteractions.PeerInteractionThread(i,
                                     ServingPeerArrayList.get(i).PeerIP,
                                     ServingPeerArrayList.get(i).PeerPort,
-                                    APICallBytesClientQuery
+                                    APICallBytesClientQuery,
+                                    pseudonym_choice
                                     );
                             pi.start();
                         }
@@ -528,13 +533,16 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     // In the case we have multiple peers that can answer our query
                     // We start the Threads for requesting answers from these peers.
                     peer_thread_entered_counter = new CountDownLatch(ServingPeerArrayList.size());
+                    Random random_pseudo = new Random();
+                    int pseudonym_choice = random_pseudo.nextInt(100);
                     for(int i=0;i<ServingPeerArrayList.size();i++){
                         // making sure the answer is null before we call the peer interaction thread
                         SearchingNodeFragment.peerResponseDecJson[i] = null;
                         PeerInteractions.PeerInteractionThread pi = new PeerInteractions.PeerInteractionThread(i,
                                 ServingPeerArrayList.get(i).PeerIP,
                                 ServingPeerArrayList.get(i).PeerPort,
-                                APICallBytesClientQuery
+                                APICallBytesClientQuery,
+                                pseudonym_choice
                         );
                         pi.start();
                     }
@@ -717,6 +725,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
         if(results_layer != null) {
             // we remove the previous results layer if it exists
             results_layer.removeLayerFromMap();
+            mMap.clear();
         }
         results_layer = new GeoJsonLayer(mMap, geojson);
 

@@ -293,10 +293,10 @@ public class P2PRelayServerInteractions {
                     AvailabilitySocket.connect(new InetSocketAddress(lbsEC.ENTITIES_MANAGER_IP, lbsEC.P2P_RELAY_AVAILABILITY_PORT), AVAILABILITY_SOCKET_TIMEOUT);
                     Log.d("Availability Thread: ", "Socket connected!");
                     while (true) {
-                        client_hello(AvailabilitySocket);
+                        CryptoTimestamp ct = client_hello_availability(AvailabilitySocket);
                         Log.d("Availability Thread: ", "Sent Client Hello");
                         // now we can send the availability
-                        String disclosure = send_availability(AvailabilitySocket);
+                        String disclosure = send_availability(AvailabilitySocket,ct);
 
                         if(last_disclosure.length()!=0){
                             if(!last_disclosure.equals(disclosure)){
@@ -366,7 +366,33 @@ public class P2PRelayServerInteractions {
 
     }
 
-    public static String send_availability(Socket socket) throws IOException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException, InvalidAlgorithmParameterException {
+    public static CryptoTimestamp client_hello_availability(Socket socket) throws CertificateEncodingException, IOException, NoSuchAlgorithmException, SignatureException, NoSuchProviderException, InvalidKeyException {
+
+        DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
+
+        byte [] helloField = "HELLO".getBytes();
+        byte [] certificateField = InterNodeCrypto.my_cert.getEncoded();
+        byte [] certificateLengthField = TCPhelpers.intToByteArray(certificateField.length);
+        CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestamp();
+        byte [] signedTimestampLength = TCPhelpers.intToByteArray(cryptoTimestamp.signed_timestamp.length);
+
+        ByteArrayOutputStream baosCH = new ByteArrayOutputStream();
+        baosCH.write(helloField);
+        baosCH.write(certificateLengthField);
+        baosCH.write(certificateField);
+        baosCH.write(cryptoTimestamp.timestamp);
+        baosCH.write(signedTimestampLength);
+        baosCH.write(cryptoTimestamp.signed_timestamp);
+
+        byte [] ClientHello = baosCH.toByteArray();
+        dos.write(ClientHello);
+
+        return cryptoTimestamp;
+
+    }
+
+
+    public static String send_availability(Socket socket,CryptoTimestamp ct) throws IOException, NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException, InvalidAlgorithmParameterException {
 
         DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
 
@@ -399,7 +425,9 @@ public class P2PRelayServerInteractions {
         byte [] EncDisclosureLength = TCPhelpers.intToByteArray(EncDisclosure.length);
         // CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestamp();
         // byte [] SignedTimestampLength = TCPhelpers.intToByteArray(cryptoTimestamp.signed_timestamp.length);
-        byte [] SignedDisclosure = InterNodeCrypto.signByteArrayWithPrivateKey(Disclosure,InterNodeCrypto.my_key);
+
+        CryptoTimestamp nea_timestamp = InterNodeCrypto.makeTimstampSignedWithConcatenationWithKey(ct,Disclosure,InterNodeCrypto.my_key);
+        byte [] SignedDisclosure = nea_timestamp.signed_timestamp_conncatenated_with_info;
         byte [] SignedDisclosureLength = TCPhelpers.intToByteArray(SignedDisclosure.length);
 
         ByteArrayOutputStream baosClientAvailability = new ByteArrayOutputStream();
@@ -407,8 +435,8 @@ public class P2PRelayServerInteractions {
         // [       4         ] | [ EDISCLOSURE LEN ] | [     8     ] | [          4           ] | [   SIGNED TIMESTAMP LENGTH   ]
 
         // change to
-        // [ EDISCLOSURE LEN ] | [    EDISCLOSURE  ] | [ SIGNED DISCLOSURE LEN ] | [    SIGNED DISCLOSURE     ]
-        // [       4         ] | [ EDISCLOSURE LEN ] | [          4            ] | [ SIGNED DISCLOSURE LENGTH ]
+        // [ EDISCLOSURE LEN ] | [    EDISCLOSURE  ] | [ SIGNED DISCLOSURE || timestamp LEN ] | [    SIGNED DISCLOSURE                  ]
+        // [       4         ] | [ EDISCLOSURE LEN ] | [          4                         ] | [ SIGNED DISCLOSURE || timestamp LENGTH ]
 
 
         baosClientAvailability.write(EncDisclosureLength);

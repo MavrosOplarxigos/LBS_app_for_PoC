@@ -44,10 +44,10 @@ public class PeerInteractions {
         public String peer_name = null;
         public PrivateKey my_key = null; // We get our key based on our index4AnswerStoring
 
-        public PeerInteractionThread(int i, InetAddress ip, int port, byte [] APICallBytesClientQuery){
+        public PeerInteractionThread(int i, InetAddress ip, int port, byte [] APICallBytesClientQuery, int pseudo_choice){
             index4AnswerStoring = i;
-            my_cert = InterNodeCrypto.pseudonymous_certificates.get(i%InterNodeCrypto.pseudonymous_certificates.size());
-            my_key = InterNodeCrypto.pseudonymous_privates.get(i%InterNodeCrypto.pseudonymous_privates.size());
+            my_cert = InterNodeCrypto.pseudonymous_certificates.get(pseudo_choice%InterNodeCrypto.pseudonymous_certificates.size());
+            my_key = InterNodeCrypto.pseudonymous_privates.get(pseudo_choice%InterNodeCrypto.pseudonymous_privates.size());
             peerIP = ip;
             peerPort = port;
             this.APICallBytesClientQuery = APICallBytesClientQuery;
