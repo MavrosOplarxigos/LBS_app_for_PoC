@@ -6,6 +6,119 @@
     android:layout_height="match_parent"
     tools:context=".SearchingNodeFragment">
 
+    <com.google.android.gms.maps.MapView
+        android:id="@+id/mapViewforSecond"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="1.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.0" />
+
+    <TextView
+        android:id="@+id/experimentsTV"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Experiment: 0/0"
+        android:textSize="25dp"
+        android:textColor="#000000"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintHorizontal_bias="0.5"
+        app:layout_constraintVertical_bias="0.20"
+        android:visibility="invisible"
+        android:enabled="false"
+        />
+
+    <TextView
+        android:id="@+id/experimentStatusTV"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Status: UNINITIATED"
+        android:textSize="25dp"
+        android:textColor="#000000"
+        app:layout_constraintTop_toBottomOf="@id/experimentsTV"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintVertical_bias="0"
+        android:layout_marginTop="5dp"
+        android:visibility="invisible"
+        android:enabled="false"
+        />
+
+    <TextView
+        android:id="@+id/answerProbabilityTV"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Answer Probabiity: nan%"
+        android:textSize="25dp"
+        android:textColor="#000000"
+        app:layout_constraintTop_toBottomOf="@id/experimentStatusTV"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintVertical_bias="0"
+        android:layout_marginTop="5dp"
+        android:visibility="invisible"
+        android:enabled="false"
+        />
+
+    <TextView
+        android:id="@+id/RetryOnMissTV"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Retry on Miss: NO"
+        android:textSize="25dp"
+        android:textColor="#000000"
+        app:layout_constraintTop_toBottomOf="@id/answerProbabilityTV"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintVertical_bias="0"
+        android:layout_marginTop="5dp"
+        android:visibility="invisible"
+        android:enabled="false"
+        />
+
+    <TextView
+        android:id="@+id/hitVSmissTV"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="HIT/MISS = 0/0"
+        android:textSize="25dp"
+        android:textColor="#000000"
+        app:layout_constraintTop_toBottomOf="@id/RetryOnMissTV"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintVertical_bias="0"
+        android:layout_marginTop="5dp"
+        android:visibility="invisible"
+        android:enabled="false"
+        />
+
+    <TextView
+        android:id="@+id/toatalRequestsTV"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Total requests = 0"
+        android:textSize="25dp"
+        android:textColor="#000000"
+        app:layout_constraintTop_toBottomOf="@id/hitVSmissTV"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintLeft_toLeftOf="parent"
+        app:layout_constraintRight_toRightOf="parent"
+        app:layout_constraintVertical_bias="0"
+        android:layout_marginTop="5dp"
+        android:visibility="invisible"
+        android:enabled="false"
+        />
+
     <Button
         android:id="@+id/buttonToLog"
         android:layout_width="wrap_content"
@@ -30,17 +143,6 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintVertical_bias="0.939" />
 
-    <com.google.android.gms.maps.MapView
-        android:id="@+id/mapViewforSecond"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="1.0"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintVertical_bias="0.0" />
-
     <EditText
         android:id="@+id/search_keyword_input"
         android:layout_width="290dp"
@@ -54,4 +156,5 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="@+id/mapViewforSecond"
         app:layout_constraintVertical_bias="0.052" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

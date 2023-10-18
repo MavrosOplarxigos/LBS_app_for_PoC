@@ -52,6 +52,8 @@ import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.reflect.Array;
@@ -59,6 +61,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.net.HttpURLConnection;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
@@ -85,6 +89,17 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     private GoogleMap mMap=null;
     private static final String MAPVIEW_BUNDLE_KEY = "MapViewBundleKey";
     public static Button search_button;
+    public static Button LogsButton;
+
+    public static TextView experimentsTV;
+    public static TextView experimentStatusTV;
+    public static TextView answerProbabilityTV;
+    public static TextView RetryOnMissTV;
+    public static TextView hitVSmissTV;
+    public static TextView totalRequestsTV;
+
+    ArrayList <TextView> experimentViews;
+
     private EditText search_keyword_input;
     public GeoJsonLayer results_layer = null;
     private MapSearchItem msi; // The fundamental object that defines the search as soon as the search button is pressed
@@ -93,13 +108,27 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     // if for some reason all the peers we were given are inactive we query the signing server directly
     public static ArrayList<ServingPeer> ServingPeerArrayList;
     public static final Lock mutextServingPeerArrayList = new ReentrantLock();
-    public static LBSEntitiesConnectivity lbsEC4PeerDiscRestart;
+    public static LBSEntitiesConnectivity lbsEC;
 
     // The bytes arrays for the responses in case of peer querying (normal case)
     public static byte [][] peerResponseDecJson = new byte[MAX_PEER_RESPONSES][];
     public static Lock [] mutexPeerResponseDecJson = new ReentrantLock[MAX_PEER_RESPONSES];
     public static CountDownLatch peer_thread_entered_counter; // To await for responses (or timeouts) from all peers that were queried.
     public static CountDownLatch peer_rediscovery_thread_entered; // To await at least one query completion from the peer discovery thread
+    public static CountDownLatch experiment_query_completed;
+
+    // EXPERIMENT CONFIGURATION VARIABLES
+    public static boolean SHOULD_PEER_REASK = true;
+    public static boolean eThread_has_started = false;
+    public static int ANSWER_PROBABILITY_PCENT = 100;
+    public static int NUMBER_OF_EXPERIMENTS = 0;
+    public static int QUERIES_PER_EXPERIMENT = 10;
+
+    public static Lock HIT_MISS_COUNTERS_LOCK = new ReentrantLock();
+    public static int PEER_HITS = 0;
+    public static int PEER_MISSES = 0;
+    public static boolean EXPERIMENT_IS_RUNNING = false;
+    public static boolean EXPERIMENT_READINESS_ONLY_WHEN_PEERS_AVAILABLE = true;
 
     public static class ServingPeer{
         // public String DistinguishedName; I don't know the name. I expect only the IP and Port to be of a SOME peer.
@@ -117,12 +146,374 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     // We call the following function IFF AND WHEN all of the peers in the ServingPeerArrayList are non-responsive
     public static void P2PThreadExplicitRestart(){
         P2PRelayServerInteractions.qThread.explicit_search_request = true; // setting this true so the previous instance will kill itself
-        P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC4PeerDiscRestart,true);
+        P2PRelayServerInteractions.qThread = new P2PRelayServerInteractions.PeerDiscoveryThread(lbsEC,true);
         P2PRelayServerInteractions.qThread.start();
+    }
+
+    void unset_experiment_screen(){
+        getActivity().runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+
+                        // mMapView.setActivated(true); // Check if this causes for the msi object to be not created correctly
+                        search_button.setVisibility(View.VISIBLE);
+                        search_button.setClickable(true);
+                        search_button.setActivated(true);
+
+                        LogsButton.setVisibility(View.VISIBLE);
+                        LogsButton.setClickable(true);
+                        LogsButton.setActivated(true);
+
+                        search_keyword_input.setVisibility(View.VISIBLE);
+                        search_keyword_input.setActivated(true);
+                        search_keyword_input.setClickable(true);
+
+                        for(int i=0;i<experimentViews.size();i++){
+                            TextView curr = experimentViews.get(i);
+                            curr.setVisibility(View.INVISIBLE);
+                            curr.setEnabled(false);
+                            curr.setBackgroundColor(Color.TRANSPARENT);
+                        }
+
+                    }
+                }
+        );
+    }
+
+    void set_experiment_screen(){
+    getActivity().runOnUiThread(
+    new Runnable() {
+    @Override
+    public void run() {
+
+        search_button.setVisibility(View.INVISIBLE);
+        search_button.setClickable(false);
+        search_button.setActivated(false);
+
+        LogsButton.setVisibility(View.INVISIBLE);
+        LogsButton.setClickable(false);
+        LogsButton.setActivated(false);
+
+        search_keyword_input.setVisibility(View.INVISIBLE);
+        search_keyword_input.setActivated(false);
+        search_keyword_input.setClickable(false);
+
+        for(int i=0;i<experimentViews.size();i++){
+            TextView curr = experimentViews.get(i);
+            curr.setVisibility(View.VISIBLE);
+            curr.bringToFront();
+            curr.setEnabled(true);
+            curr.setBackgroundColor(Color.WHITE);
+        }
+
+    }
+    }
+    );
+    }
+
+    public static String interpolateColorToHex(double fraction) {
+        fraction = Math.max(0, Math.min(1, fraction)); // Ensure fraction is in the [0, 1] range
+
+        int red = (int) (255 * (1 - fraction));
+        int green = (int) (255 * fraction);
+        int blue = 0; // Blue component is set to 0
+
+        int color = Color.rgb(red, green, blue);
+        String hexColor = String.format("#%06X", (0xFFFFFF & color));
+
+        return hexColor;
+    }
+
+    void update_experiment_tv(int current,int total){
+    getActivity().runOnUiThread(
+    new Runnable() {
+        @Override
+        public void run() {
+            String new_text = "EXPERIMENT: " + current + "/" + total;
+            int color = Color.parseColor(interpolateColorToHex((double)(current)/(double)(total)));
+            experimentsTV.setBackgroundColor(color);
+            experimentsTV.setText(new_text);
+        }
+    }
+    );
+    }
+
+
+    void update_experiment_status_tv(String status){
+        getActivity().runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        String new_text = "STATUS: " + status;
+                        experimentStatusTV.setText(new_text);
+                        if(status.equals("LOADING")){
+                            experimentStatusTV.setBackgroundColor(Color.YELLOW);
+                        }
+                        if(status.equals("RUNNING")){
+                            experimentStatusTV.setBackgroundColor(Color.CYAN);
+                        }
+                        if(status.equals("FINISHED")){
+                            experimentStatusTV.setBackgroundColor(Color.GREEN);
+                        }
+                    }
+                }
+        );
+    }
+
+    void update_answer_probability_tv(){
+        getActivity().runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        answerProbabilityTV.setText("ANSWER PROBABILITY: " + ANSWER_PROBABILITY_PCENT + "%");
+                        int color = Color.parseColor(interpolateColorToHex((double)(ANSWER_PROBABILITY_PCENT*100.0)/(double)(100.0)));
+                        answerProbabilityTV.setBackgroundColor(color);
+                    }
+                }
+        );
+    }
+
+    void update_peer_miss_second_try_tv(){
+        getActivity().runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        if(SHOULD_PEER_REASK){
+                            RetryOnMissTV.setText("RETRY ON MISS: YES");
+                            RetryOnMissTV.setBackgroundColor(Color.GREEN);
+                        }
+                        else {
+                            RetryOnMissTV.setText("RETRY ON MISS: NO");
+                        }
+                    }
+                }
+        );
+    }
+
+    void update_total_requests_tv(int request){
+
+        getActivity().runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        totalRequestsTV.setText("TOTAL REQUESTS: " + request + "/" + QUERIES_PER_EXPERIMENT);
+                        totalRequestsTV.setBackgroundColor(Color.parseColor(interpolateColorToHex((double)(request)/(double)(QUERIES_PER_EXPERIMENT))));
+                    }
+                }
+        );
+
+
+    }
+
+    void update_hit_ratio_tv() {
+
+        getActivity().runOnUiThread(
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        hitVSmissTV.setText("HITS/MISS: " + PEER_HITS + "/" + PEER_MISSES);
+                        if (PEER_HITS + PEER_MISSES != 0) {
+                            hitVSmissTV.setBackgroundColor(Color.parseColor(interpolateColorToHex((double) (PEER_HITS) / (double) (PEER_HITS + PEER_MISSES))));
+                        }
+                    }
+                }
+        );
+
+    }
+
+    void reset_experiment_counters(){
+        HIT_MISS_COUNTERS_LOCK.lock();
+        PEER_HITS = 0;
+        PEER_MISSES = 0;
+        HIT_MISS_COUNTERS_LOCK.unlock();
+    }
+
+    // Thread to run everything related to the experiment
+    public ExperimentThread eThread = new ExperimentThread();
+    public class ExperimentThread extends Thread{
+        public ExperimentThread(){}
+        public void run(){
+            Log.d("ExperimentThread","Experiment Thread Entered!");
+            try{
+
+                // make sure that we get at least some serving peers before telling to the remote server that we are ready for the experiment
+                while(EXPERIMENT_READINESS_ONLY_WHEN_PEERS_AVAILABLE) {
+                    boolean got_peers = false;
+                    mutextServingPeerArrayList.lock();
+                    got_peers = (ServingPeerArrayList.size()!=0);
+                    mutextServingPeerArrayList.unlock();
+                    if(got_peers){
+                        break;
+                    }
+                    Thread.sleep(1000);
+                }
+
+                Socket my_socket;
+                try {
+                    my_socket = new Socket();
+                    my_socket.connect(new InetSocketAddress(lbsEC.ENTITIES_MANAGER_IP, lbsEC.ENTITIES_MANAGER_PORT), 0);
+                }
+                catch (Exception e){
+                    Log.d("ExperimentThread","Couldn't establish connectivity with remote server for experiment readiness declaration!");
+                    return;
+                }
+                DataInputStream dis;
+                DataOutputStream dos;
+                dis = new DataInputStream(my_socket.getInputStream());
+                dos = new DataOutputStream(my_socket.getOutputStream());
+
+                // Tell the experiment server that you are ready
+                byte [] optionField = "EXPR".getBytes();
+                dos.write(optionField);
+                Log.d("RAFAIL OPTION FIELD FOR EXPERIMENT","Sent!");
+                // byte [] nameLengthByteArray = TCPhelpers.intToByteArray((int)(lbsEC.MY_REAL_NODE_NAME.length())); // signed int
+                // byte [] nameByteArray = lbsEC.MY_REAL_NODE_NAME.getBytes();
+                // ByteArrayOutputStream baosExpr = new ByteArrayOutputStream();
+                // baosExpr.write(optionField);
+                // baosExpr.write(nameLengthByteArray);
+                // baosExpr.write(nameByteArray);
+                // byte[] exprMSG = baosExpr.toByteArray();
+
+                // Read number of experiments
+                byte [] number_of_experiments_bytes = TCPhelpers.buffRead(4,dis);
+                int number_of_experiments = TCPhelpers.byteArrayToIntLittleEndian(number_of_experiments_bytes);
+                Log.d("ExperimentThread","The remote server has declared " + number_of_experiments + " experiments to run!");
+                set_experiment_screen();
+                EXPERIMENT_IS_RUNNING = true;
+
+                for(int i=0;i<number_of_experiments;i++) {
+
+                    update_experiment_tv(i+1,number_of_experiments);
+                    update_experiment_status_tv("LOADING");
+
+                    // receive the answering probability for this experiment
+                    byte [] answer_prob_byte = TCPhelpers.buffRead(4,dis);
+                    ANSWER_PROBABILITY_PCENT = TCPhelpers.byteArrayToIntLittleEndian(answer_prob_byte);
+                    Log.d("ExperimentThread","New answer probability is " + ANSWER_PROBABILITY_PCENT + "%");
+                    update_answer_probability_tv();
+
+                    // receive choice of whether we should re-ask in a case where we don't get an answer
+                    byte [] reask_bytes = TCPhelpers.buffRead(3,dis);
+                    SHOULD_PEER_REASK = ( (new String(reask_bytes,StandardCharsets.UTF_8) ).equals("YES") );
+                    update_peer_miss_second_try_tv();
+
+                    // queries per experiment
+                    byte [] queries_per_experiment_bytes = TCPhelpers.buffRead(4,dis);
+                    QUERIES_PER_EXPERIMENT = TCPhelpers.byteArrayToIntLittleEndian(queries_per_experiment_bytes);
+
+                    // now we should wait for the time to start the experiment
+                    byte[] start_signal = TCPhelpers.buffRead(5, dis);
+                    String start_signal_string = new String(start_signal, StandardCharsets.UTF_8);
+                    if (!(start_signal_string.equals("START"))) {
+                        Log.d("ExperimentThread", "The experiment initiation code is invalid = " + start_signal.toString());
+                        return;
+                    }
+
+                    update_experiment_status_tv("RUNNING");
+
+                    // run the experiment
+                    // TODO: RUN THE EXPERIMENT
+
+                    reset_experiment_counters();
+
+                    for(int request=0;request<QUERIES_PER_EXPERIMENT;request++){
+
+                        update_total_requests_tv(request+1);
+                        experiment_query_completed = new CountDownLatch(1);
+
+                        // for every request we are going to do what would be done if the search button where to be pressed
+
+                        // set the msi object
+                        msi.keyword = "restaurant";
+                        byte [] APICallBytesClientQuery = msi.apicall().getBytes();
+
+                        // Lock all resources needed for this:
+                        mutextServingPeerArrayList.lock(); // nobody is changing the peer list while we are using the peers
+
+                        if(ServingPeerArrayList.size() == 0) {
+                            byte[] decJson = null;
+                            try {
+                                decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery, InterNodeCrypto.my_cert, InterNodeCrypto.my_key);
+                                if (decJson == null) {
+                                    Log.d("ExperimentThread", "Signing Server No Response!");
+                                    getActivity().runOnUiThread(
+                                            new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    Toast.makeText(getContext(), "No Peers. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                                }
+                                            }
+                                    );
+                                } else {
+                                    HIT_MISS_COUNTERS_LOCK.lock();
+                                    PEER_MISSES++;
+                                    experiment_query_completed.countDown();
+                                    update_hit_ratio_tv();
+                                    HIT_MISS_COUNTERS_LOCK.unlock();
+                                }
+                            } catch (Exception e) {
+                                Log.d("ExperimentThread", "Signing Server error on communication!");
+                                getActivity().runOnUiThread(
+                                        new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                Toast.makeText(getContext(), "No Peers. Signing Server unresponsive.", Toast.LENGTH_SHORT).show();
+                                            }
+                                        }
+                                );
+                            }
+                        }
+                        else {
+                            peer_thread_entered_counter = new CountDownLatch(ServingPeerArrayList.size());
+                            Random random_pseudo = new Random();
+                            int pseudonym_choice = random_pseudo.nextInt(100);
+                            for (int ix = 0; ix < ServingPeerArrayList.size(); ix++) {
+                                // making sure the answer is null before we call the peer interaction thread
+                                SearchingNodeFragment.peerResponseDecJson[ix] = null;
+                                // instead of ix (the serving peer index) we use a random pseudo certificate for all guys
+                                PeerInteractions.PeerInteractionThread pi = new PeerInteractions.PeerInteractionThread(ix,
+                                        ServingPeerArrayList.get(ix).PeerIP,
+                                        ServingPeerArrayList.get(ix).PeerPort,
+                                        APICallBytesClientQuery,
+                                        pseudonym_choice
+                                );
+                                pi.start();
+                            }
+
+                            ResponseCollectionThread rct = new ResponseCollectionThread(ServingPeerArrayList, false, APICallBytesClientQuery);
+
+                            rct.start();
+                        }
+                        experiment_query_completed.await();
+                        mutextServingPeerArrayList.unlock();
+                    }
+
+                    update_experiment_status_tv("FINISHED");
+                    Thread.sleep(5000);
+
+                    // signal the experiment server that you have finished
+                    byte [] done_bytes = "DONE".getBytes();
+                    dos.write(done_bytes);
+
+                }
+
+                unset_experiment_screen();
+                EXPERIMENT_IS_RUNNING = false;
+
+            }catch (Exception e) {
+                Log.d("ExperimentThread","Stopped trying to conduct experiment because of exception!");
+                e.printStackTrace();
+                return;
+            }
+
+        }
     }
 
     @Override
     public void onMapReady(@NonNull GoogleMap googleMap) {
+
+        // Log.d("RAFAIL_NAVIGATION","We have entered the onMapReady!");
 
         mMap = googleMap;
 
@@ -258,9 +649,23 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     }
 
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
+        // Log.d("RAFAIL_NAVIGATION","Ate Ate onViewCreated!");
         super.onViewCreated(view, savedInstanceState);
 
-        Button LogsButton = view.findViewById(R.id.buttonToLog);
+        experimentsTV = view.findViewById(R.id.experimentsTV);
+        experimentViews.add(experimentsTV);
+        experimentStatusTV = view.findViewById(R.id.experimentStatusTV);
+        experimentViews.add(experimentStatusTV);
+        answerProbabilityTV = view.findViewById(R.id.answerProbabilityTV);
+        experimentViews.add(answerProbabilityTV);
+        RetryOnMissTV = view.findViewById(R.id.RetryOnMissTV);
+        experimentViews.add(RetryOnMissTV);
+        hitVSmissTV = view.findViewById(R.id.hitVSmissTV);
+        experimentViews.add(hitVSmissTV);
+        totalRequestsTV = view.findViewById(R.id.toatalRequestsTV);
+        experimentViews.add(totalRequestsTV);
+
+        LogsButton = view.findViewById(R.id.buttonToLog);
         LogsButton.setOnClickListener(
                 new View.OnClickListener() {
                     @Override
@@ -396,6 +801,15 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
         // we can now initialize the map search item
         msi = new MapSearchItem(getContext());
 
+        // Log.d("RAFAIL_NAVIGATION","We have reached the end of onViewCreated!");
+
+        // Start thread for the experiment
+        if(eThread_has_started == false) {
+            Log.d("eThread","Magnificent!");
+            eThread.start();
+            eThread_has_started = true;
+        }
+
     }
 
     // - thread which waits for all the answers from the peers to be received DONE
@@ -418,6 +832,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
         public void run() {
             try {
 
+                // Log.d("RAFAIL_NAVIGATION","response collectin thread entered!");
                 // we ensure that all peer threads have entered and locked their respective reponse indexes
                 peer_thread_entered_counter.await();
                 // now we wait for all response index to be unlocked by their respective threads and thus become available
@@ -427,7 +842,8 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 for(int i=0;i<peers;i++){
                     SearchingNodeFragment.mutexPeerResponseDecJson[i].lock();
                 }
-                LoggingFragment.mutexTvdAL.lock();
+
+                if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.lock(); }
 
                 // RESPONSE RATE and CONSENSUS checking
                 int responded = 0;
@@ -446,14 +862,14 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 }
 
                 // log the RESPONSE RATE
-                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Response Rate = [" + responded + " / " + peers + "]",(peers==responded)?Color.GREEN:Color.RED));
+                if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Response Rate = [" + responded + " / " + peers + "]",(peers==responded)?Color.GREEN:Color.RED)); }
 
                 // If we have 0 answers and this is the first time we have tried to get answers.
-                if(responded == 0 && !this.isReAttempt){
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Forced peer discovery thread restart! Cause: All peers unresponsive to query.",Color.RED));
+                if(responded == 0 && !this.isReAttempt && SHOULD_PEER_REASK){
+                    if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Forced peer discovery thread restart! Cause: All peers unresponsive to query.",Color.RED)); }
 
                     // - unlock everything that this thread has locked DONE
-                    LoggingFragment.mutexTvdAL.unlock();
+                    if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.unlock(); }
                     for(int i=0;i<peers;i++){
                         SearchingNodeFragment.mutexPeerResponseDecJson[i].unlock();
                     }
@@ -468,13 +884,13 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                     // if the new peer array has nothing in it
                     if(ServingPeerArrayList.size() == 0){
-                        LoggingFragment.mutexTvdAL.lock();
-                        LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No peers from forced peer discovery request. Direct request to signing server to retrieve answer to search.",Color.DKGRAY));
+                        if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.lock(); }
+                        if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No peers from forced peer discovery request. Direct request to signing server to retrieve answer to search.",Color.DKGRAY));}
                         byte [] decJson = null;
                         try {
                             decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
                             if (decJson == null) {
-                                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server No Response!", Color.RED));
+                                if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server No Response!", Color.RED)); }
                                 getActivity().runOnUiThread(
                                         new Runnable() {
                                             @Override
@@ -484,20 +900,29 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                                         }
                                 );
                             } else {
-                                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DIRECT REQUEST (no peers): Signing Server Responded.", Color.GREEN));
-                                byte [] copyDecJson = decJson;
-                                getActivity().runOnUiThread(
-                                        new Runnable() {
-                                            @Override
-                                            public void run() {
-                                                apply_search_result(copyDecJson);
+                                if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DIRECT REQUEST (no peers): Signing Server Responded.", Color.GREEN)); }
+                                HIT_MISS_COUNTERS_LOCK.lock();
+                                PEER_MISSES++;
+                                experiment_query_completed.countDown();
+                                update_hit_ratio_tv();
+                                HIT_MISS_COUNTERS_LOCK.unlock();
+
+                                if(!EXPERIMENT_IS_RUNNING) {
+                                    byte[] copyDecJson = decJson;
+                                    getActivity().runOnUiThread(
+                                            new Runnable() {
+                                                @Override
+                                                public void run() {
+                                                    apply_search_result(copyDecJson);
+                                                }
                                             }
-                                        }
-                                );
+                                    );
+                                }
+
                             }
                         }
                         catch (Exception e){
-                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server error on communication!", Color.RED));
+                            if(!EXPERIMENT_IS_RUNNING){LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server error on communication!", Color.RED));}
                             getActivity().runOnUiThread(
                                     new Runnable() {
                                         @Override
@@ -510,28 +935,32 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                         // unlocking all resources we have locked
                         mutextServingPeerArrayList.unlock();
-                        LoggingFragment.mutexTvdAL.unlock();
+                        if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.unlock(); }
 
-                        getActivity().runOnUiThread(
-                                new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        search_button.setClickable(true);
-                                        search_button.setText("SEARCH");
+                        if(!EXPERIMENT_IS_RUNNING) {
+                            getActivity().runOnUiThread(
+                                    new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            search_button.setClickable(true);
+                                            search_button.setText("SEARCH");
+                                        }
                                     }
-                                }
-                        );
-
+                            );
+                        }
                         return;
                     }
 
-                    LoggingFragment.mutexTvdAL.lock();
-                    LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("Retrying search query with NEW peers.",Color.DKGRAY));
-                    LoggingFragment.mutexTvdAL.unlock();
+                    if(!EXPERIMENT_IS_RUNNING) {
+                        LoggingFragment.mutexTvdAL.lock();
+                        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Retrying search query with NEW peers.", Color.DKGRAY));
+                        LoggingFragment.mutexTvdAL.unlock();
+                    }
 
                     // - if the new peer array list is not null call for a second try (basically do what happens when we click the button over again)
                     // In the case we have multiple peers that can answer our query
                     // We start the Threads for requesting answers from these peers.
+
                     peer_thread_entered_counter = new CountDownLatch(ServingPeerArrayList.size());
                     Random random_pseudo = new Random();
                     int pseudonym_choice = random_pseudo.nextInt(100);
@@ -559,20 +988,15 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     return;
 
                 }
-                if(responded == 0 && this.isReAttempt){
-
-
-                    // - we lock the new peers
-                    // mutextServingPeerArrayList.lock();
-
+                if(responded == 0 && (this.isReAttempt || !SHOULD_PEER_REASK) ){
                     // if the new peer array has nothing in it
-                    LoggingFragment.mutexTvdAL.lock();
-                    LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("New peers were also unresponsive. Directly contacting the signing server.",Color.DKGRAY));
+                    if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.lock(); }
+                    if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("New peers were also unresponsive. Directly contacting the signing server.",Color.DKGRAY)); }
                     byte [] decJson = null;
                     try {
                         decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery,InterNodeCrypto.my_cert,InterNodeCrypto.my_key);
                         if (decJson == null) {
-                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server No Response!", Color.RED));
+                            if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server No Response!", Color.RED)); }
                             getActivity().runOnUiThread(
                                     new Runnable() {
                                         @Override
@@ -583,20 +1007,27 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                             );
                         }
                         else {
-                            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DIRECT REQUEST (unresponsive peers): Signing Server Responded.", Color.GREEN));
-                            byte [] copyDecJson = decJson;
-                            getActivity().runOnUiThread(
-                                    new Runnable() {
-                                        @Override
-                                        public void run() {
-                                            apply_search_result(copyDecJson);
+                            if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("DIRECT REQUEST (unresponsive peers): Signing Server Responded.", Color.GREEN)); }
+                            if(!EXPERIMENT_IS_RUNNING) {
+                                byte[] copyDecJson = decJson;
+                                getActivity().runOnUiThread(
+                                        new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                apply_search_result(copyDecJson);
+                                            }
                                         }
-                                    }
-                            );
+                                );
+                            }
+                            HIT_MISS_COUNTERS_LOCK.lock();
+                            PEER_MISSES++;
+                            experiment_query_completed.countDown();
+                            update_hit_ratio_tv();
+                            HIT_MISS_COUNTERS_LOCK.unlock();
                         }
                     }
                     catch (Exception e){
-                        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server error on communication!", Color.RED));
+                        if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Signing Server error on communication!", Color.RED)); }
                         getActivity().runOnUiThread(
                                 new Runnable() {
                                     @Override
@@ -607,58 +1038,72 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                             );
                     }
 
-                    // unlocking all resources we have locked
-                    // mutextServingPeerArrayList.unlock();
-                    LoggingFragment.mutexTvdAL.unlock();
-
-                    getActivity().runOnUiThread(
-                            new Runnable() {
+                    if(!EXPERIMENT_IS_RUNNING){LoggingFragment.mutexTvdAL.unlock();}
+                    if(!EXPERIMENT_IS_RUNNING) {
+                        getActivity().runOnUiThread(
+                                new Runnable() {
                                     @Override
-                                public void run() {
-                                    search_button.setClickable(true);
-                                    search_button.setText("SEARCH");
+                                    public void run() {
+                                        search_button.setClickable(true);
+                                        search_button.setText("SEARCH");
+                                    }
                                 }
-                            }
-                    );
-
+                        );
+                    }
                     return;
                 }
 
                 if(!consensus){
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Answers from peers are ALL signed from signing server. However there are differences in the answers. We show peer " + first_reponded + "'s response.",Color.DKGRAY));
+                    if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Answers from peers are ALL signed from signing server. However there are differences in the answers. We show peer " + first_reponded + "'s response.",Color.DKGRAY)); }
                     Log.d("ResponseCollectionThread","ERROR: Not all responses received consent with one another");
                 }
                 else {
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Consensus amongst ALL peers that responded!",Color.GREEN));
-                    Log.d("ResponseCollectionThread", "SUCCESS: All responses received consent with each other!");
+                    if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Consensus amongst ALL peers that responded!",Color.GREEN)); }
+                    Log.d("ResponseCollectionThread", "SUCCESS: All responses received consent with each other! And the EXPERIMENT_IS_RUNNING = " + EXPERIMENT_IS_RUNNING );
                 }
-                LoggingFragment.mutexTvdAL.unlock();
+
+                if(!EXPERIMENT_IS_RUNNING) {LoggingFragment.mutexTvdAL.unlock();}
+
+                // count peer hit and update peer hit ratio text view
+                {
+                    HIT_MISS_COUNTERS_LOCK.lock();
+                    PEER_HITS++;
+                    experiment_query_completed.countDown();
+                    update_hit_ratio_tv();
+                    HIT_MISS_COUNTERS_LOCK.unlock();
+                }
 
                 // applying the result that we got from the peers
-                int final_first_responded = first_reponded;
-                getActivity().runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                apply_search_result(peerResponseDecJson[final_first_responded]);
+                if(!EXPERIMENT_IS_RUNNING) {
+                    int final_first_responded = first_reponded;
+                    getActivity().runOnUiThread(
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    apply_search_result(peerResponseDecJson[final_first_responded]);
+                                }
                             }
-                        }
-                );
+                    );
+                }
 
                 // unlocking the response bytes arrays for future searches
                 for(int i=0;i<peers;i++){
                     SearchingNodeFragment.mutexPeerResponseDecJson[i].unlock();
                 }
+
+
                 // making the search button clickable again now that we know for sure the search is completed
-                getActivity().runOnUiThread(
-                        new Runnable() {
-                            @Override
-                            public void run() {
-                                SearchingNodeFragment.search_button.setClickable(true);
-                                search_button.setText("SEARCH");
+                if(!EXPERIMENT_IS_RUNNING) {
+                    getActivity().runOnUiThread(
+                            new Runnable() {
+                                @Override
+                                public void run() {
+                                    SearchingNodeFragment.search_button.setClickable(true);
+                                    search_button.setText("SEARCH");
+                                }
                             }
-                        }
-                );
+                    );
+                }
 
             }
             catch (Exception e){
@@ -707,7 +1152,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     new Runnable() {
                         @Override
                         public void run() {
-                            Toast.makeText(null, "ERROR: No results for given keyword!", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(getContext(), "ERROR: No results for given keyword!", Toast.LENGTH_SHORT).show();
                         }
                     }
             );
@@ -756,16 +1201,31 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
             Bundle savedInstanceState
     ) {
 
+        // Log.d("RAFAIL_NAVIGATION","onCreateView empiken re!");
+
         binding = FragmentSecondBinding.inflate(inflater, container, false);
         View v = binding.getRoot();
+
+        // Log.d("RAFAIL_NAVIGATION","view root is in!");
 
         Bundle mapViewBundle = null;
         if (savedInstanceState != null) {
             mapViewBundle = savedInstanceState.getBundle(MAPVIEW_BUNDLE_KEY);
         }
+
+        // Log.d("RAFAIL_NAVIGATION","BUNDLEKEY!");
+
         mMapView = (MapView) v.findViewById(R.id.mapViewforSecond);
+
+        // Log.d("RAFAIL_NAVIGATION","MAPVIEWFORSECOND");
+
         mMapView.onCreate(mapViewBundle);
+
+        // Log.d("RAFAIL_NAVIGATION","ON CREATE!");
+
         mMapView.getMapAsync(this);
+
+        // Log.d("RAFAIL_NAVIGATION","GET ASYNC!");
 
         return v;
 

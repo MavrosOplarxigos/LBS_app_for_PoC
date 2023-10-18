@@ -12,7 +12,7 @@
         android:layout_height="35dp"
         android:layout_marginTop="60dp"
         android:text="LBS entities manager IP"
-        android:textColor="#2196F3"
+        android:textColor="#FF5722"
         android:textSize="20dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -40,7 +40,7 @@
         app:layout_constraintLeft_toLeftOf="parent"
         app:layout_constraintRight_toRightOf="parent"
         android:layout_marginTop="30dp"
-        android:textColor="#2196F3"
+        android:textColor="#F44336"
         />
 
     <EditText

@@ -40,7 +40,7 @@ public class P2PRelayServerInteractions {
     public static class PeerDiscoveryThread extends Thread{
 
         LBSEntitiesConnectivity lbsEntitiesConnectivity;
-        public static final int QUERY_INTERVAL_MSEC = 20 * 1000;
+        public static int QUERY_INTERVAL_MSEC = 20 * 1000; // 20 * 1000;
         public static final int QUERY_SOCKET_TIMEOUT = 5000;
         public boolean explicit_search_request; // this is not static so that the previous instances of the thread kill themselves explicitly
         public boolean is_reatempt;

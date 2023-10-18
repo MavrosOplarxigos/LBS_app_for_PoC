@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.Random;
 import java.util.concurrent.locks.ReentrantLock;
 
 import javax.crypto.BadPaddingException;
@@ -41,7 +42,7 @@ public class ServingNodeQueryHandleThread extends Thread {
     public class ServiceDetails{
 
         Queue<Long> requestTimestampQueue;
-        public static final int MAX_SERVICES_PER_MINUTE_PER_PSEUDO_CERT = 5;
+        public static final int MAX_SERVICES_PER_MINUTE_PER_PSEUDO_CERT = 4 * 100 * 1000;
 
         ServiceDetails(){
             this.requestTimestampQueue = new LinkedList<>();
@@ -116,6 +117,15 @@ public class ServingNodeQueryHandleThread extends Thread {
 
     @Override
     public void run() {
+
+        Random random = new Random();
+        int random_result = random.nextInt(101);
+
+        // For the experiments there is the probability that we won't answer to the querying user's hello
+        if( random_result > SearchingNodeFragment.ANSWER_PROBABILITY_PCENT ){
+            safe_close_socket(socket);
+            return;
+        }
 
         boolean introductionDone = configure_peer_connectivity(socket);
         if(!introductionDone){

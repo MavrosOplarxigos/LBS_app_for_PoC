@@ -134,7 +134,7 @@ public class FirstFragment extends Fragment {
                 P2PRelayServerInteractions.aThread.start();
 
                 // DONE: 6) Thread for PEER DISCOVERY (which runs once our records are either not fresh (loops itself), non-existent or irresponsive 1 time)
-                SearchingNodeFragment.lbsEC4PeerDiscRestart = lbsEC; // for PEER DISCOVERY thread restarting
+                SearchingNodeFragment.lbsEC = lbsEC; // for PEER DISCOVERY thread restarting
                 SearchingNodeFragment.ServingPeerArrayList = new ArrayList<SearchingNodeFragment.ServingPeer>();
                 for (int i = 0; i < SearchingNodeFragment.MAX_PEER_RESPONSES; i++) {
                     SearchingNodeFragment.mutexPeerResponseDecJson[i] = new ReentrantLock();
@@ -145,6 +145,8 @@ public class FirstFragment extends Fragment {
                 // going to the map fragment
                 NavHostFragment.findNavController(FirstFragment.this)
                         .navigate(R.id.action_FirstFragment_to_SecondFragment);
+
+                Log.d("NAVIGATION","The navigation command has supposedely being executed!");
 
             }
         });
@@ -442,9 +444,15 @@ public class FirstFragment extends Fragment {
                     new Runnable() {
                         @Override
                         public void run() {
-                            AnimatedImageDrawable animatedImageDrawable = (AnimatedImageDrawable) iv.getDrawable();
-                            if (animatedImageDrawable != null) {
-                                animatedImageDrawable.start();
+                            try {
+                                AnimatedImageDrawable animatedImageDrawable = (AnimatedImageDrawable) iv.getDrawable();
+                                if (animatedImageDrawable != null) {
+                                    animatedImageDrawable.start();
+                                }
+                            }
+                            catch (Exception e){
+                                // Log.d("RAFAIL_NAVIGATION","Exception sto remoteservice!");
+                                e.printStackTrace();
                             }
                         }
                     }
@@ -456,9 +464,15 @@ public class FirstFragment extends Fragment {
                     new Runnable() {
                         @Override
                         public void run() {
-                            AnimatedImageDrawable animatedImageDrawable = (AnimatedImageDrawable) iv.getDrawable();
-                            if (animatedImageDrawable != null) {
-                                animatedImageDrawable.start();
+                            try {
+                                AnimatedImageDrawable animatedImageDrawable = (AnimatedImageDrawable) iv.getDrawable();
+                                if (animatedImageDrawable != null) {
+                                    animatedImageDrawable.start();
+                                }
+                            }
+                            catch (Exception e){
+                                // Log.d("RAFAIL_NAVIGATION","exception on credentials loaded!");
+                                e.printStackTrace();
                             }
                         }
                     }

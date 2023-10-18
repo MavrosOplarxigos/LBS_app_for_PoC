@@ -614,4 +614,94 @@ public class LBSEntitiesConnectivity implements Serializable {
 
     }
 
+    // Thread for EXPR message
+
+    /*public class ExperimentReadinessDeclaration extends Thread implements Serializable{
+        public ExperimentReadinessDeclaration(){}
+        public void run()
+        {
+            Log.d("LBS entities connectivity","Entered the ExperimentReadingDeclaration downloading thread!");
+            try{
+
+                Socket my_socket;
+                try {
+                    my_socket = new Socket();
+                    my_socket.connect(new InetSocketAddress(LBSEntitiesConnectivity.this.ENTITIES_MANAGER_IP, LBSEntitiesConnectivity.ENTITIES_MANAGER_PORT), 1000);
+                }
+                catch (Exception e){
+                    Log.d("LBS entities connectivity","Couldn't establish connectivity with remote server for experiment readiness declaration!");
+                    return;
+                }
+                DataInputStream dis;
+                DataOutputStream dos;
+                dis = new DataInputStream(my_socket.getInputStream());
+                dos = new DataOutputStream(my_socket.getOutputStream());
+                my_socket.setSoTimeout(5000);
+
+                // whatever data we need to orchestrate the experiment we put here
+                byte [] optionField = "EXPR".getBytes();
+                byte [] nameLengthByteArray = intToByteArray((int)(LBSEntitiesConnectivity.this.MY_REAL_NODE_NAME.length())); // signed int
+                byte [] nameByteArray = LBSEntitiesConnectivity.this.MY_REAL_NODE_NAME.getBytes();
+
+                ByteArrayOutputStream baosExpr = new ByteArrayOutputStream();
+                baosExpr.write(optionField);
+                baosExpr.write(nameLengthByteArray);
+                baosExpr.write(nameByteArray);
+                byte[] exprMSG = baosExpr.toByteArray();
+
+                // send message
+                Log.d("LBS entities connectivity","the lenght of the mssages bout to send " + exprMSG.length);
+                dos.write(exprMSG);
+                Log.d("LBS entities connectivity","Wrote the EXPR message!");
+
+            }catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        public byte[] intToByteArray(int number) {
+            ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+            buffer.putInt(number);
+            return buffer.array();
+        }
+
+        public int byteArrayToInt(byte[] byteArray) {
+            ByteBuffer buffer = ByteBuffer.wrap(byteArray);
+            buffer.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+            return buffer.getInt();
+        }
+
+        byte [] buffRead(int numOfBytes, DataInputStream dis) throws IOException {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            int totalBytesRead = 0;
+            while(true){
+                int BytesLeft2Read = numOfBytes - totalBytesRead;
+                int bufferSize = Math.min(100,BytesLeft2Read); // We read at most 100 bytes every time
+                if (bufferSize != 100) {
+                    Log.d("BuffRead", "Size now is " + bufferSize + " and BytesLeft2Read = " + BytesLeft2Read + " out of " + numOfBytes );
+                }
+                byte [] buffer = new byte[bufferSize];
+                int tempBytesRead = dis.read(buffer);
+                if(tempBytesRead!=bufferSize) {
+                    if( tempBytesRead < bufferSize ){
+                        // If they are less maybe we are still to receive them
+                        Log.d("BuffRed","WARNING: We read less than what we expected!");
+                    }
+                    else {
+                        throw new RuntimeException();
+                    }
+                }
+                totalBytesRead += tempBytesRead;
+                baos.write(buffer,0,tempBytesRead);
+                if(totalBytesRead == numOfBytes){
+                    break;
+                }
+            }
+            byte [] readByteArray = baos.toByteArray();
+            return readByteArray;
+        }
+
+    }*/
+
+
 }
