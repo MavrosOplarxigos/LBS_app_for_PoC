@@ -44,7 +44,7 @@ public class SigningServerInterations {
             throw new Exception("Could not retrieve the data streams from the socket with signing server");
         }
 
-        Log.d("DIREC","Proxy Query Socket and Data Streams initialized!");
+        Log.d("DIREC","Direct Query Socket and Data Streams initialized!");
 
         // QUERYING PEER QUERY FORWARD
         // ["DIREC"] | [4_CERTIFICATE_LENGTH] | [QUERYING PEER CERTIFICATE] | [4_API_CALL_ENC_LEN] | [API_CALL_ENC_SSKEY]
@@ -177,6 +177,7 @@ public class SigningServerInterations {
             throw new Exception("The signature of the SS for the concatenation of the query and the answer is invalid");
         }
 
+        Log.d("DIREC","We have indeed received the answer from directly contacting the signing server he len: " + ANSWER.length);
         return ANSWER;
 
     }

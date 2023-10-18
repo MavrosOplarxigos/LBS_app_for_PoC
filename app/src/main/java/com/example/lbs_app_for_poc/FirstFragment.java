@@ -50,6 +50,7 @@ public class FirstFragment extends Fragment {
     public Button search_initiator_button;
     public EditText LBSemIP_ET;
     public EditText LBSemNAME_ET;
+    public static boolean NTP_TASK_COMPLETE = false;
 
     public static final Pattern ipAddressPattern = Pattern.compile("^([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +
             "([01]?\\d\\d?|2[0-4]\\d|25[0-5])\\." +

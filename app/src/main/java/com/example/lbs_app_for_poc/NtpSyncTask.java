@@ -13,25 +13,46 @@ public class NtpSyncTask extends AsyncTask<Void, Void, Boolean> {
 
     @Override
     protected Boolean doInBackground(Void... params) {
-        try {
 
-            TrueTime.build()
-                    .withNtpHost("pool.ntp.org")
-                    .withConnectionTimeout(10000)
-                    .initialize();
+        String [] ntp_servers = {"0.pool.ntp.org","1.pool.ntp.org","2.pool.ntp.org","3.pool.ntp.org"};
 
-            if (TrueTime.isInitialized()) {
-                long currentTime = TrueTime.now().getTime();
-                long systemTime = System.currentTimeMillis();
-                long offset = currentTime - systemTime;
-
-                // can't set the system's time (PROTECTED PERMISSION)
-                // SystemClock.setCurrentTimeMillis(systemTime + offset);
-
-                // we are instead going to save the offset for future tasks
-                InterNodeCrypto.NTP_TIME_OFFSET = offset;
-                return true;
+        int current_server = 0;
+        while(true) {
+            try {
+                current_server += 1;
+                current_server %= ntp_servers.length;
+                TrueTime.build()
+                        .withNtpHost(ntp_servers[current_server])
+                        .withConnectionTimeout(10000)
+                        .initialize();
+                Log.d("NTP","The NTP task is completed!");
+                FirstFragment.NTP_TASK_COMPLETE = true;
+                break;
             }
+            catch (Exception e){
+                Log.d("NTP","Failed and will retry!");
+                try {
+                    Thread.sleep((int)(Math.random()*1000) * (current_server+1) );
+                }
+                catch (Exception ex){
+                    // do nothing
+                }
+                continue;
+            }
+        }
+
+        if (TrueTime.isInitialized()) {
+            long currentTime = TrueTime.now().getTime();
+            long systemTime = System.currentTimeMillis();
+            long offset = currentTime - systemTime;
+
+            // can't set the system's time (PROTECTED PERMISSION)
+            // SystemClock.setCurrentTimeMillis(systemTime + offset);
+
+            // we are instead going to save the offset for future tasks
+            InterNodeCrypto.NTP_TIME_OFFSET = offset;
+            return true;
+        }
 
             /*
                 SntpClient sntpClient = new SntpClient();
@@ -42,10 +63,6 @@ public class NtpSyncTask extends AsyncTask<Void, Void, Boolean> {
                     // NTP synchronization failed, handle accordingly
                 }
             */
-
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
 
         return false;
     }

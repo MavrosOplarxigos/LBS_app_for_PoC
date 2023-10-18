@@ -55,8 +55,10 @@ public class PeerInteractions {
 
         @Override
         public void run() {
+
             SearchingNodeFragment.mutexPeerResponseDecJson[index4AnswerStoring].lock(); // locking my response index
             SearchingNodeFragment.peer_thread_entered_counter.countDown(); // notifying the collection thread that this peer has entered
+
             Socket s = new Socket();
             try {
                 s.connect(new InetSocketAddress(this.peerIP, this.peerPort), SERVING_PEER_CONNECTION_TIMEOUT_MSEC);
@@ -84,9 +86,11 @@ public class PeerInteractions {
             // HELLO phase
             boolean introductionsDone = configure_peer_connectivity(s);
             if(!introductionsDone){
-                LoggingFragment.mutexTvdAL.lock();
-                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with " + peerIP, Color.RED) );
-                LoggingFragment.mutexTvdAL.unlock();
+                if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with " + peerIP, Color.RED));
+                    LoggingFragment.mutexTvdAL.unlock();
+                }
                 safe_exit("ERROR: HELLO interaction after socket connection failure!",null,s);
                 return;
             }
@@ -536,7 +540,9 @@ public class PeerInteractions {
                 return true;
             } catch (Exception e) {
                 Log.d("Peer Connectivity","Error on the HELLO phase");
-                e.printStackTrace();
+                if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+                    e.printStackTrace();
+                }
                 return false;
             }
         }

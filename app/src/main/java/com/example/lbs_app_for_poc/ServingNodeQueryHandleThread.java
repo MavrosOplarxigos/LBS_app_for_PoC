@@ -119,12 +119,19 @@ public class ServingNodeQueryHandleThread extends Thread {
     public void run() {
 
         Random random = new Random();
-        int random_result = random.nextInt(101);
+        int random_result = random.nextInt(100);
 
         // For the experiments there is the probability that we won't answer to the querying user's hello
-        if( random_result > SearchingNodeFragment.ANSWER_PROBABILITY_PCENT ){
+        if( random_result >= SearchingNodeFragment.ANSWER_PROBABILITY_PCENT ){
+            if(SearchingNodeFragment.ANSWER_PROBABILITY_PCENT == 100){
+                throw new RuntimeException("OK something is very weird because we are not responding when the probability is " + SearchingNodeFragment.ANSWER_PROBABILITY_PCENT);
+            }
             safe_close_socket(socket);
             return;
+        }
+
+        if(SearchingNodeFragment.ANSWER_PROBABILITY_PCENT == 0){
+            throw new RuntimeException("OK something is insanely weird because we are answer when the probability is " + SearchingNodeFragment.ANSWER_PROBABILITY_PCENT);
         }
 
         boolean introductionDone = configure_peer_connectivity(socket);

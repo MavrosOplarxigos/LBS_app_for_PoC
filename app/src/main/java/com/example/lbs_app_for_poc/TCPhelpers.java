@@ -182,16 +182,22 @@ public class TCPhelpers {
             if(tempBytesRead!=bufferSize) {
                 if( tempBytesRead < bufferSize ){
                     // If they are less maybe we are still to receive them
-                    Log.d("BuffRed","WARNING: We read less than what we expected!");
+                    Log.d("BuffRead","WARNING: We read less than what we expected!");
                 }
                 else {
                     throw new RuntimeException();
                 }
             }
-            totalBytesRead += tempBytesRead;
-            baos.write(buffer,0,tempBytesRead);
-            if(totalBytesRead == numOfBytes){
-                break;
+            if(tempBytesRead != -1) {
+                totalBytesRead += tempBytesRead;
+                baos.write(buffer, 0, tempBytesRead);
+                if (totalBytesRead == numOfBytes) {
+                    break;
+                }
+            }
+            else{
+                Log.d("BuffRead","If we are on a blocking kind of socket how can we get -1 then?");
+                throw new RuntimeException("Bytes that were expected to be here are not!");
             }
         }
         byte [] readByteArray = baos.toByteArray();

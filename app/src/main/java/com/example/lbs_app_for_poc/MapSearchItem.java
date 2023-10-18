@@ -35,7 +35,7 @@ public class MapSearchItem {
 
     String apicall() throws PackageManager.NameNotFoundException {
 
-        Log.d("API CALL STRING","apicall() function entered");
+        // Log.d("API CALL STRING","apicall() function entered");
 
         String call = "";
 
@@ -47,11 +47,11 @@ public class MapSearchItem {
         // now specifing location
         call += "location=";
         call += Double.toString((double)( map_center.latitude ));
-        Log.d("API CALL STRING","from the hexadecimal conversion we get " + Integer.toHexString((int)',') );
+        // Log.d("API CALL STRING","from the hexadecimal conversion we get " + Integer.toHexString((int)',') );
         call += "%" + Integer.toHexString((int)','); // Hexadecimal comma for URL
         call += Double.toString((double)( map_center.longitude ));
 
-        Log.d("API CALL STRING","Location specified");
+        // Log.d("API CALL STRING","Location specified");
 
         // now specifing radius
         call += "&";
@@ -63,7 +63,7 @@ public class MapSearchItem {
         call += Integer.toString( (int)( (double)( this.search_diameter / 2.0) * 0.93 ) );
         call += "&";
 
-        Log.d("API CALL STRING","Radius specified");
+        // Log.d("API CALL STRING","Radius specified");
 
         // link to the types https://developers.google.com/maps/documentation/places/web-service/supported_types
         // call += "&";
@@ -72,7 +72,7 @@ public class MapSearchItem {
         call += this.keyword;
         call += "&";
 
-        Log.d("API CALL STRING","Keyword specified");
+        // Log.d("API CALL STRING","Keyword specified");
 
         // finally adding the API key from the app's metadata
         call += "key=";
@@ -80,7 +80,7 @@ public class MapSearchItem {
         Bundle bundle = app.metaData;
         call += bundle.getString("com.google.android.geo.API_KEY");
 
-        Log.d("API CALL STRING","API key specified");
+        // Log.d("API CALL STRING","API key specified");
 
         return call;
 

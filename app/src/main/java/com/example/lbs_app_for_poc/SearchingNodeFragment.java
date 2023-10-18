@@ -239,7 +239,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     );
     }
 
-
     void update_experiment_status_tv(String status){
         getActivity().runOnUiThread(
                 new Runnable() {
@@ -267,7 +266,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     @Override
                     public void run() {
                         answerProbabilityTV.setText("ANSWER PROBABILITY: " + ANSWER_PROBABILITY_PCENT + "%");
-                        int color = Color.parseColor(interpolateColorToHex((double)(ANSWER_PROBABILITY_PCENT*100.0)/(double)(100.0)));
+                        int color = Color.parseColor(interpolateColorToHex(((double)(ANSWER_PROBABILITY_PCENT*100.0)/(double)(100.0))));
                         answerProbabilityTV.setBackgroundColor(color);
                     }
                 }
@@ -349,6 +348,12 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     Thread.sleep(1000);
                 }
 
+                // make sure that the NTP task is complete
+                Log.d("ExperimentThread","Waiting on NTP task to complete!");
+                while(!FirstFragment.NTP_TASK_COMPLETE){
+                    Thread.sleep(1000);
+                }
+
                 Socket my_socket;
                 try {
                     my_socket = new Socket();
@@ -389,18 +394,21 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                     // receive the answering probability for this experiment
                     byte [] answer_prob_byte = TCPhelpers.buffRead(4,dis);
-                    ANSWER_PROBABILITY_PCENT = TCPhelpers.byteArrayToIntLittleEndian(answer_prob_byte);
-                    Log.d("ExperimentThread","New answer probability is " + ANSWER_PROBABILITY_PCENT + "%");
+                    Log.d("ExperimentThread","New answer probability is " + TCPhelpers.byteArrayToIntLittleEndian(answer_prob_byte) + "%");
                     update_answer_probability_tv();
 
                     // receive choice of whether we should re-ask in a case where we don't get an answer
                     byte [] reask_bytes = TCPhelpers.buffRead(3,dis);
-                    SHOULD_PEER_REASK = ( (new String(reask_bytes,StandardCharsets.UTF_8) ).equals("YES") );
                     update_peer_miss_second_try_tv();
 
                     // queries per experiment
                     byte [] queries_per_experiment_bytes = TCPhelpers.buffRead(4,dis);
-                    QUERIES_PER_EXPERIMENT = TCPhelpers.byteArrayToIntLittleEndian(queries_per_experiment_bytes);
+
+                    // signal the experiment server that you have finished
+                    if(i > 0) {
+                        byte[] done_bytes = "DONE".getBytes();
+                        dos.write(done_bytes);
+                    }
 
                     // now we should wait for the time to start the experiment
                     byte[] start_signal = TCPhelpers.buffRead(5, dis);
@@ -411,14 +419,15 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     }
 
                     update_experiment_status_tv("RUNNING");
-
-                    // run the experiment
-                    // TODO: RUN THE EXPERIMENT
-
+                    ANSWER_PROBABILITY_PCENT = TCPhelpers.byteArrayToIntLittleEndian(answer_prob_byte);
+                    SHOULD_PEER_REASK = ( (new String(reask_bytes,StandardCharsets.UTF_8) ).equals("YES") );
+                    QUERIES_PER_EXPERIMENT = TCPhelpers.byteArrayToIntLittleEndian(queries_per_experiment_bytes);
                     reset_experiment_counters();
+                    Thread.sleep(1000); // This is to make sure that the rest of the devices have also managed to change the variables
 
                     for(int request=0;request<QUERIES_PER_EXPERIMENT;request++){
 
+                        Log.d("ExperimentThread","Now on request " + (request+1) );
                         update_total_requests_tv(request+1);
                         experiment_query_completed = new CountDownLatch(1);
 
@@ -430,8 +439,8 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                         // Lock all resources needed for this:
                         mutextServingPeerArrayList.lock(); // nobody is changing the peer list while we are using the peers
-
                         if(ServingPeerArrayList.size() == 0) {
+                            Log.d("ExperimentThread","Entering the case where we have NO serving peers from the beginning!");
                             byte[] decJson = null;
                             try {
                                 decJson = SigningServerInterations.DirectQuery(APICallBytesClientQuery, InterNodeCrypto.my_cert, InterNodeCrypto.my_key);
@@ -480,23 +489,26 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                                 );
                                 pi.start();
                             }
-
+                            Log.d("ExperimentThread","The peer communicationg threads have started!");
                             ResponseCollectionThread rct = new ResponseCollectionThread(ServingPeerArrayList, false, APICallBytesClientQuery);
-
                             rct.start();
+                            Log.d("ExperimentThread","The response collection thread has started!");
                         }
-                        experiment_query_completed.await();
+                        Log.d("ExperimentThread","Unlocked the serving peers!");
                         mutextServingPeerArrayList.unlock();
+
+                        Log.d("ExperimentThread","Awaiting for a response from either Direct or Proxy request!");
+                        experiment_query_completed.await();
+                        Log.d("ExperimentThread","Indeed received countdown and await is completed!");
+
                     }
 
                     update_experiment_status_tv("FINISHED");
-                    Thread.sleep(5000);
-
-                    // signal the experiment server that you have finished
-                    byte [] done_bytes = "DONE".getBytes();
-                    dos.write(done_bytes);
 
                 }
+
+                byte[] done_bytes = "DONE".getBytes();
+                dos.write(done_bytes);
 
                 unset_experiment_screen();
                 EXPERIMENT_IS_RUNNING = false;
@@ -652,6 +664,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
         // Log.d("RAFAIL_NAVIGATION","Ate Ate onViewCreated!");
         super.onViewCreated(view, savedInstanceState);
 
+        experimentViews = new ArrayList<TextView>();
         experimentsTV = view.findViewById(R.id.experimentsTV);
         experimentViews.add(experimentsTV);
         experimentStatusTV = view.findViewById(R.id.experimentStatusTV);
@@ -834,7 +847,10 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                 // Log.d("RAFAIL_NAVIGATION","response collectin thread entered!");
                 // we ensure that all peer threads have entered and locked their respective reponse indexes
+                Log.d("RCT","Now awaiting for peer communication threads to enter and lock their responses!");
                 peer_thread_entered_counter.await();
+                Log.d("RCT","Now we know that the peer connection threads have already locked their respective responses. Waiting on those now!");
+
                 // now we wait for all response index to be unlocked by their respective threads and thus become available
                 // we consequently will lock them so that we ensure that they do not change during their processing in this thread
                 // lest another request happens for some reason (which should not since the search button is unclickable)
@@ -842,6 +858,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 for(int i=0;i<peers;i++){
                     SearchingNodeFragment.mutexPeerResponseDecJson[i].lock();
                 }
+                Log.d("RCT","The peer responses have been determined and locked!");
 
                 if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.lock(); }
 
@@ -860,6 +877,8 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         }
                     }
                 }
+
+                Log.d("RCT","The response rate for the latest queries has been determined!");
 
                 // log the RESPONSE RATE
                 if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Response Rate = [" + responded + " / " + peers + "]",(peers==responded)?Color.GREEN:Color.RED)); }
@@ -989,6 +1008,12 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                 }
                 if(responded == 0 && (this.isReAttempt || !SHOULD_PEER_REASK) ){
+
+                    // unlock peer responses (FORGOT TO ADD THIS)
+                    for(int i=0;i<peers;i++){
+                        SearchingNodeFragment.mutexPeerResponseDecJson[i].unlock();
+                    }
+
                     // if the new peer array has nothing in it
                     if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.lock(); }
                     if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("New peers were also unresponsive. Directly contacting the signing server.",Color.DKGRAY)); }
@@ -1021,6 +1046,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                             }
                             HIT_MISS_COUNTERS_LOCK.lock();
                             PEER_MISSES++;
+                            Log.d("Response Collection Thread","Indeed we DO count down!");
                             experiment_query_completed.countDown();
                             update_hit_ratio_tv();
                             HIT_MISS_COUNTERS_LOCK.unlock();
@@ -1090,7 +1116,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 for(int i=0;i<peers;i++){
                     SearchingNodeFragment.mutexPeerResponseDecJson[i].unlock();
                 }
-
 
                 // making the search button clickable again now that we know for sure the search is completed
                 if(!EXPERIMENT_IS_RUNNING) {
