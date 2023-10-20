@@ -32,8 +32,8 @@ public class PeerInteractions {
 
         // How much time do we wait for a peer to respond every time. We have to consider that it will talk to the signing server and that server will talk to the LBS server
         // so realistically we should expect a descent amount of latency after we send the client query.
-        public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC = 5000;
-        public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC_HELLO = 1000;
+        public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC = 60000;
+        public static final int SERVING_PEER_CONNECTION_TIMEOUT_MSEC_HELLO = 60000;
         int index4AnswerStoring;
         InetAddress peerIP;
         int peerPort;
@@ -46,6 +46,12 @@ public class PeerInteractions {
 
         public PeerInteractionThread(int i, InetAddress ip, int port, byte [] APICallBytesClientQuery, int pseudo_choice){
             index4AnswerStoring = i;
+            if(InterNodeCrypto.pseudonymous_privates.size() != InterNodeCrypto.pseudonymous_certificates.size()){
+                throw new RuntimeException("Very weird situation where the number of pseudo private keys that we have is not the same as the number of pseudo certificates that we have!");
+            }
+            if( ( pseudo_choice%InterNodeCrypto.pseudonymous_certificates.size() ) != ( pseudo_choice%InterNodeCrypto.pseudonymous_privates.size() ) ){
+                throw new RuntimeException("Weird situatino where the choosen pseudonym index is different for certificate and key!");
+            }
             my_cert = InterNodeCrypto.pseudonymous_certificates.get(pseudo_choice%InterNodeCrypto.pseudonymous_certificates.size());
             my_key = InterNodeCrypto.pseudonymous_privates.get(pseudo_choice%InterNodeCrypto.pseudonymous_privates.size());
             peerIP = ip;
@@ -191,6 +197,17 @@ public class PeerInteractions {
 
             byte [] ClientQuery = baosClientQuery.toByteArray();
             Log.d(debug_tag_peer(),"The size of the entire query message in bytes should be " + ClientQuery.length );
+
+            // First communicate the size of the client query message
+            byte [] ClientQuerySizeBytes = TCPhelpers.intToByteArray(ClientQuery.length);
+            try {
+                dos.write(ClientQuerySizeBytes);
+            }
+            catch (Exception e){
+                safe_exit("Error: Could not write the ClientQuerySizeBytes!",e,s);
+                return;
+            }
+
             try{
                 dos.write(ClientQuery);
             }
@@ -422,34 +439,50 @@ public class PeerInteractions {
                 // 1) HANDSHAKE STEP 1: SEND CLIENT PSEUDO CREDS
                 // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
 
+                ByteArrayOutputStream baosClientHello = new ByteArrayOutputStream();
                 byte[] helloField = "HELLO".getBytes();
                 byte[] certificateFieldClientHello = my_cert.getEncoded();
                 byte[] certificateFieldClientHelloLength = ("" + certificateFieldClientHello.length).toString().getBytes();
-                CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestampWithKey(my_key);
-
-                ByteArrayOutputStream baosClientHello = new ByteArrayOutputStream();
                 baosClientHello.write(helloField);
                 baosClientHello.write((byte)(TCPServerControlClass.transmission_del));
                 baosClientHello.write(certificateFieldClientHelloLength);
                 baosClientHello.write((byte)(TCPServerControlClass.transmission_del));
                 baosClientHello.write(certificateFieldClientHello);
                 baosClientHello.write((byte)(TCPServerControlClass.transmission_del));
+                // We write the timestamp AFTER we have written the other fields (last) so we don't miss the freshness check.
+                CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestampWithKey(my_key);
                 baosClientHello.write(cryptoTimestamp.timestamp);
                 baosClientHello.write((byte)(TCPServerControlClass.transmission_del));
                 baosClientHello.write(cryptoTimestamp.signed_timestamp);
-
                 byte [] ClientHello = baosClientHello.toByteArray();
-                String ClientHelloDebugString = new String(ClientHello, StandardCharsets.UTF_8);
+                // String ClientHelloDebugString = new String(ClientHello, StandardCharsets.UTF_8);
                 // Log.d("PeerConnectivity", "ClientHelloDebugString: " + ClientHelloDebugString);
+                // Send the Hello Size
+                byte [] Hello_Size_Bytes = TCPhelpers.intToByteArray(ClientHello.length);
+                dos.write(Hello_Size_Bytes);
                 dos.write(ClientHello);
+
                 Log.d("PeerConnectivity","SUCCESS: Sent Client Hello!");
 
                 // 2) HANDSHAKE STEP 2: RECEIVE SERVER CREDENTIALS
                 // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
-                ByteArrayOutputStream baosServerHello = new ByteArrayOutputStream();
-                baosServerHello = TCPhelpers.receiveBuffedBytesNoLimit(dis);
+
+                // First read Server Hello Length
+
+                byte [] server_hello_size_bytes;
+                try{
+                    server_hello_size_bytes = TCPhelpers.buffRead(4,dis);
+                }
+                catch (IOException e){
+                    Log.d("Peer Connectivity","Couldn't read the size of the server hello");
+                    return false;
+                }
+                int server_hello_size = TCPhelpers.byteArrayToIntBigEndian(server_hello_size_bytes);
+                Log.d("Peer Connectivity","The server hello size in bytes is " + server_hello_size);
+
+                byte[] bytesServerHello;
+                bytesServerHello = TCPhelpers.buffRead(server_hello_size,dis); // fix this to get hello message before receiving so that we get the exact one
                 Log.d("Peer Connectivity","Serving Peer Hello Received");
-                byte[] bytesServerHello = baosServerHello.toByteArray();
 
                 // SEPARATING THE FIELDS
                 byte [][] fieldsServerHello = new byte[4][];

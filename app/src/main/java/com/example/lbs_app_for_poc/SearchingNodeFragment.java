@@ -389,26 +389,29 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                 for(int i=0;i<number_of_experiments;i++) {
 
+                    byte [] experiment_counter_bytes = TCPhelpers.buffRead(4,dis);
+                    int experiment_counter_from_remote = TCPhelpers.byteArrayToIntLittleEndian(experiment_counter_bytes);
+                    Log.d("ExperimentThread","The experiment number that we have received from the remote server is: " + experiment_counter_from_remote);
+
+                    if(i+1 != experiment_counter_from_remote){
+                        Log.d("ExperimentThread","Error: We have found indeed an error on the experiment index!");
+                    }
+                    else{
+                        Log.d("ExperimentThread","The indexes of the experiment are fine for experiment index: " + i+1);
+                    }
+
                     update_experiment_tv(i+1,number_of_experiments);
                     update_experiment_status_tv("LOADING");
 
                     // receive the answering probability for this experiment
                     byte [] answer_prob_byte = TCPhelpers.buffRead(4,dis);
                     Log.d("ExperimentThread","New answer probability is " + TCPhelpers.byteArrayToIntLittleEndian(answer_prob_byte) + "%");
-                    update_answer_probability_tv();
 
                     // receive choice of whether we should re-ask in a case where we don't get an answer
                     byte [] reask_bytes = TCPhelpers.buffRead(3,dis);
-                    update_peer_miss_second_try_tv();
 
                     // queries per experiment
                     byte [] queries_per_experiment_bytes = TCPhelpers.buffRead(4,dis);
-
-                    // signal the experiment server that you have finished
-                    if(i > 0) {
-                        byte[] done_bytes = "DONE".getBytes();
-                        dos.write(done_bytes);
-                    }
 
                     // now we should wait for the time to start the experiment
                     byte[] start_signal = TCPhelpers.buffRead(5, dis);
@@ -420,10 +423,12 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                     update_experiment_status_tv("RUNNING");
                     ANSWER_PROBABILITY_PCENT = TCPhelpers.byteArrayToIntLittleEndian(answer_prob_byte);
+                    update_answer_probability_tv();
                     SHOULD_PEER_REASK = ( (new String(reask_bytes,StandardCharsets.UTF_8) ).equals("YES") );
+                    update_peer_miss_second_try_tv();
                     QUERIES_PER_EXPERIMENT = TCPhelpers.byteArrayToIntLittleEndian(queries_per_experiment_bytes);
                     reset_experiment_counters();
-                    Thread.sleep(1000); // This is to make sure that the rest of the devices have also managed to change the variables
+                    Thread.sleep(2000); // This is to make sure that the rest of the devices have also managed to change the variables
 
                     for(int request=0;request<QUERIES_PER_EXPERIMENT;request++){
 
@@ -505,10 +510,38 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                     update_experiment_status_tv("FINISHED");
 
-                }
+                    // output sanity debugs
 
-                byte[] done_bytes = "DONE".getBytes();
-                dos.write(done_bytes);
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS_LOCK.lock();
+                    Log.d("ExperimentThread","For experiment " + i + " I have received a TOTAL of  " + ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS + " requests.");
+                    int queries_we_got_and_are_unaccounted_for = ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS - (ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS+ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS);
+                    Log.d("ExperimentThread","For experiment " + i + " there are " + queries_we_got_and_are_unaccounted_for + " queries which are un-accounted for!");
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS = 0;
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS_LOCK.unlock();
+
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS_LOCK.lock();
+                    Log.d("ExperimentThread","For experiment " + i + " I have dropped " + ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS);
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS = 0;
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS_LOCK.unlock();
+
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK.lock();
+                    Log.d("ExperimentThread","For experiment " + i + " I have serviced " + ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS);
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS = 0;
+                    ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK.unlock();
+
+                    byte[] done_bytes = "DONE".getBytes();
+                    try {
+                        dos.write(done_bytes);
+                        if(done_bytes.length!=4){
+                            Log.d("ExperimentThread","Error: The done bytes should be 4 and they are not! That's what's causing the error!");
+                        }
+                        Log.d("ExperimentThread","Wrote DONE successfully");
+                    }
+                    catch(Exception e){
+                        Log.d("ExperimentThread","Here is the issue: We can't send the DONE bytes back to the experiment remote server!");
+                    }
+
+                }
 
                 unset_experiment_screen();
                 EXPERIMENT_IS_RUNNING = false;
@@ -1091,13 +1124,11 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 if(!EXPERIMENT_IS_RUNNING) {LoggingFragment.mutexTvdAL.unlock();}
 
                 // count peer hit and update peer hit ratio text view
-                {
-                    HIT_MISS_COUNTERS_LOCK.lock();
-                    PEER_HITS++;
-                    experiment_query_completed.countDown();
-                    update_hit_ratio_tv();
-                    HIT_MISS_COUNTERS_LOCK.unlock();
-                }
+                HIT_MISS_COUNTERS_LOCK.lock();
+                PEER_HITS++;
+                experiment_query_completed.countDown();
+                update_hit_ratio_tv();
+                HIT_MISS_COUNTERS_LOCK.unlock();
 
                 // applying the result that we got from the peers
                 if(!EXPERIMENT_IS_RUNNING) {

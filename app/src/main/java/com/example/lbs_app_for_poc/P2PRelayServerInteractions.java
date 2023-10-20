@@ -197,12 +197,14 @@ public class P2PRelayServerInteractions {
                     return null;
                 }
 
-                Log.d("PDISC","NUMBER_OF_RECORDS = " + numOfRecords);
-                Log.d("PDISC","DEC_RECORDS_BYTE_ARRAY_SIZE = " + recordsByteArray.length);
-                Log.d("PDISC","DEC_RECORDS_BYTE_ARRAY = " + TCPhelpers.byteArrayToDecimalString(recordsByteArray) );
-                Log.d("PDISC","ENC_BYTE_ARRAY_LEN = " + ENC_records_byte_array.length);
-                Log.d("PDISC","ENC_BYTE_ARRAY = " + TCPhelpers.byteArrayToDecimalString(ENC_records_byte_array) );
-                Log.d("PDISC","ENC_BYTE_ARRAY_len_adv = " + sizeOfEncRecords);
+                if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+                    Log.d("PDISC", "NUMBER_OF_RECORDS = " + numOfRecords);
+                    Log.d("PDISC", "DEC_RECORDS_BYTE_ARRAY_SIZE = " + recordsByteArray.length);
+                    Log.d("PDISC", "DEC_RECORDS_BYTE_ARRAY = " + TCPhelpers.byteArrayToDecimalString(recordsByteArray));
+                    Log.d("PDISC", "ENC_BYTE_ARRAY_LEN = " + ENC_records_byte_array.length);
+                    Log.d("PDISC", "ENC_BYTE_ARRAY = " + TCPhelpers.byteArrayToDecimalString(ENC_records_byte_array));
+                    Log.d("PDISC", "ENC_BYTE_ARRAY_len_adv = " + sizeOfEncRecords);
+                }
 
                 /*
                 // INVALID CHECK: BECAUSE OF PADDING TO 190 BYTES
@@ -234,9 +236,13 @@ public class P2PRelayServerInteractions {
                         port_byte_array[j-port_index*4] = recordsByteArray[j];
                     }
 
-                    Log.d("PDISC","PORT BYTE ARRAY BEFORE REVERSE: " + TCPhelpers.byteArrayToDecimalString(port_byte_array) );
+                    if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+                        Log.d("PDISC", "PORT BYTE ARRAY BEFORE REVERSE: " + TCPhelpers.byteArrayToDecimalString(port_byte_array));
+                    }
                     TCPhelpers.reverseByteArray(port_byte_array);
-                    Log.d("PDISC","PORT BYTE ARRAY AFTER REVERSE: " + TCPhelpers.byteArrayToDecimalString(port_byte_array) );
+                    if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+                        Log.d("PDISC", "PORT BYTE ARRAY AFTER REVERSE: " + TCPhelpers.byteArrayToDecimalString(port_byte_array));
+                    }
 
                     int IP_value = byteArrayToInt(ip_byte_array);
                     int Port_value = byteArrayToIntBigEndian(port_byte_array);

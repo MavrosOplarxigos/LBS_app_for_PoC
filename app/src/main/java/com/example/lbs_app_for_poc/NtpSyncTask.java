@@ -14,9 +14,10 @@ public class NtpSyncTask extends AsyncTask<Void, Void, Boolean> {
     @Override
     protected Boolean doInBackground(Void... params) {
 
-        String [] ntp_servers = {"0.pool.ntp.org","1.pool.ntp.org","2.pool.ntp.org","3.pool.ntp.org"};
+        String [] ntp_servers = {"time.google.com","0.pool.ntp.org","1.pool.ntp.org","2.pool.ntp.org","3.pool.ntp.org"};
 
         int current_server = 0;
+        int failures = 0;
         while(true) {
             try {
                 current_server += 1;
@@ -30,9 +31,10 @@ public class NtpSyncTask extends AsyncTask<Void, Void, Boolean> {
                 break;
             }
             catch (Exception e){
+                failures++;
                 Log.d("NTP","Failed and will retry!");
                 try {
-                    Thread.sleep((int)(Math.random()*1000) * (current_server+1) );
+                    Thread.sleep( 1000 * (failures) );
                 }
                 catch (Exception ex){
                     // do nothing

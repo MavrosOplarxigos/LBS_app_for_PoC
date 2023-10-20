@@ -26,6 +26,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 import javax.crypto.BadPaddingException;
@@ -99,7 +100,16 @@ public class ServingNodeQueryHandleThread extends Thread {
     public String peer_name = null;
     public boolean peerWasTooFrequent;
 
-    public int QUERYING_PEER_CONNECTION_TIMEOUT_HELLO = 1000;
+    public int QUERYING_PEER_CONNECTION_TIMEOUT_HELLO = 60000;
+
+    public static Lock COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS_LOCK = new ReentrantLock();
+    public static int COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS = 0;
+
+    public static Lock COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS_LOCK = new ReentrantLock();
+    public static int COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS = 0;
+
+    public static Lock COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK = new ReentrantLock();
+    public static int COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS = 0;
 
     public ServingNodeQueryHandleThread(Socket socket){
         peerWasTooFrequent = false;
@@ -118,6 +128,10 @@ public class ServingNodeQueryHandleThread extends Thread {
     @Override
     public void run() {
 
+        COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS_LOCK.lock();
+        COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS++;
+        COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS_LOCK.unlock();
+
         Random random = new Random();
         int random_result = random.nextInt(100);
 
@@ -126,6 +140,9 @@ public class ServingNodeQueryHandleThread extends Thread {
             if(SearchingNodeFragment.ANSWER_PROBABILITY_PCENT == 100){
                 throw new RuntimeException("OK something is very weird because we are not responding when the probability is " + SearchingNodeFragment.ANSWER_PROBABILITY_PCENT);
             }
+            COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS_LOCK.lock();
+            COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS++;
+            COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS_LOCK.unlock();
             safe_close_socket(socket);
             return;
         }
@@ -135,10 +152,14 @@ public class ServingNodeQueryHandleThread extends Thread {
         }
 
         boolean introductionDone = configure_peer_connectivity(socket);
+
         if(!introductionDone){
+            if(SearchingNodeFragment.EXPERIMENT_IS_RUNNING){
+                throw new RuntimeException("It should be impossible that we get a failure on the hello phase between peers since they should always accept. peerWasTooFrequent = " + peerWasTooFrequent);
+            }
             if(!peerWasTooFrequent) {
                 LoggingFragment.mutexTvdAL.lock();
-                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with: " + peerIP, Color.RED));
+                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with: " + peerIP + " unrelated to frequency of queries!", Color.RED));
                 LoggingFragment.mutexTvdAL.unlock();
                 safe_exit("Failure on the Hello phase", null, socket);
             }
@@ -163,17 +184,27 @@ public class ServingNodeQueryHandleThread extends Thread {
         }
 
         // 3) CLIENT MESSAGE: RECEIVE A MESSAGE FROM CLIENT (QUERY,BYE)
-        // ["QUERY"] [DEC_QUERY_LEN] | [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] | [API_CALL_SIGNED_BYTES]
-        ByteArrayOutputStream baosClientMessage = new ByteArrayOutputStream();
+        // ["QUERY"] [DEC_QUERY_LEN] | [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] |
+
+        // read the size of the client message first
+        byte [] client_message_size_bytes;
         try{
-            baosClientMessage = TCPhelpers.receiveBuffedBytesNoLimit(dis);
+            client_message_size_bytes = TCPhelpers.buffRead(4,dis);
+        }
+        catch (IOException e){
+            safe_exit("Error: client message size bytes could not be received!",e,socket);
+            return;
+        }
+        int client_message_size = TCPhelpers.byteArrayToIntBigEndian(client_message_size_bytes);
+
+        byte[] bytesClientMessage;
+        try{
+            bytesClientMessage = TCPhelpers.buffRead(client_message_size,dis);
         }
         catch (Exception e){
             safe_exit("The Client Query Message couldn't be received!",e,socket);
             return;
         }
-        Log.d(debug_tag(),"Client Message Received.");
-        byte[] bytesClientMessage = baosClientMessage.toByteArray();
         Log.d(debug_tag(),"Client message size in bytes is " + bytesClientMessage.length);
 
         // separating the fields
@@ -305,6 +336,11 @@ public class ServingNodeQueryHandleThread extends Thread {
 
             dos.write(ServingPeerAnswerFwd);
 
+            COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK.lock();
+            COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS++;
+            COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK.unlock();
+
+
         }
         catch (Exception e){
             safe_exit("Could not finish the SERVING PEER ANSWER FWD phase",e,socket);
@@ -326,7 +362,9 @@ public class ServingNodeQueryHandleThread extends Thread {
         LoggingFragment.mutexTvdAL.unlock();*/
 
         Log.d("SNQHT_QUERY_IMPORTANT","The length of the signatuere is: " + fields[1].length );
-        Log.d("SNQHT_QUERY_IMPORTANT","The signatuere is: " + TCPhelpers.byteArrayToDecimalString(fields[1]) );
+        if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+            Log.d("SNQHT_QUERY_IMPORTANT", "The signatuere is: " + TCPhelpers.byteArrayToDecimalString(fields[1]));
+        }
 
         // Check signature
         boolean signature_ok = CryptoChecks.isSignedByCert(raw_query,fields[1],peer_cert);
@@ -369,16 +407,28 @@ public class ServingNodeQueryHandleThread extends Thread {
 
         // 1) HANDSHAKE STEP 1: RECEIVE CLIENT PSEUDO CREDS
         // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
+
+        // read the size of the hello first
+        byte [] client_hello_size_bytes;
+        try{
+            client_hello_size_bytes = TCPhelpers.buffRead(4,dis);
+        }
+        catch (IOException e){
+            safe_exit("Error: On receiving the querying peer hello message size",e,s);
+            return false;
+        }
+        int client_hello_size = TCPhelpers.byteArrayToIntBigEndian(client_hello_size_bytes);
+        Log.d("SNQHT","The hello size from the querying peer is " + client_hello_size);
+
         Log.d("SNQHT","Now started carrying out the HELLO phase!");
-        ByteArrayOutputStream baosClientHello = null;
+        byte[] bytesClientHello;
         try {
-            baosClientHello = TCPhelpers.receiveBuffedBytesNoLimit(dis);
+            bytesClientHello = TCPhelpers.buffRead(client_hello_size,dis);
         }
         catch (Exception e){
             safe_exit("Error: On receiving the querying peer hello",e,s);
             return false;
         }
-        byte[] bytesClientHello = baosClientHello.toByteArray();
 
         // SEPARATING THE FIELDS
         byte [][] fieldsClientHello = new byte[4][];
@@ -493,7 +543,6 @@ public class ServingNodeQueryHandleThread extends Thread {
             byte[] helloFieldServerHello = "HELLO".getBytes();
             byte[] certificateFieldServerHello = my_cert.getEncoded();
             byte[] certificateFieldServerHelloLength = ("" + certificateFieldServerHello.length).toString().getBytes();
-            CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestampWithKey(my_key);
             ByteArrayOutputStream baosServerHello = new ByteArrayOutputStream();
             baosServerHello.write(helloFieldServerHello);
             baosServerHello.write((byte)(transmission_del));
@@ -501,10 +550,13 @@ public class ServingNodeQueryHandleThread extends Thread {
             baosServerHello.write((byte)(transmission_del));
             baosServerHello.write(certificateFieldServerHello);
             baosServerHello.write((byte)(transmission_del));
+            CryptoTimestamp cryptoTimestamp = InterNodeCrypto.getSignedTimestampWithKey(my_key);
             baosServerHello.write(cryptoTimestamp.timestamp);
             baosServerHello.write((byte)(transmission_del));
             baosServerHello.write(cryptoTimestamp.signed_timestamp);
             byte [] ServerHello = baosServerHello.toByteArray();
+            byte [] ServerHelloSizeBytes = TCPhelpers.intToByteArray(ServerHello.length);
+            dos.write(ServerHelloSizeBytes);
             dos.write(ServerHello);
         }
         catch (Exception e){

@@ -396,7 +396,8 @@ public class InterNodeCrypto {
         }
 
         long difference = currentTime - timestampValue;
-        long freshnessThreshold = 2500; // 2.5 seconds in milliseconds (this can be reduced/increased dynamically based on connection confidence in the future)
+        // adapted the strictness of the timestamp based on whether we are running an experiment or not
+        long freshnessThreshold = SearchingNodeFragment.EXPERIMENT_IS_RUNNING ? 60000 : 3500;
 
         return difference <= freshnessThreshold;
     }
@@ -488,12 +489,12 @@ public class InterNodeCrypto {
     public static boolean checkFieldsClientHello(byte [][] arr, String receiver){
 
         if(arr.length > 4){
-            Log.d("TCP " + receiver,"More than 4 fields received in Hello. Dropping connection!");
+            Log.d("TCP " + receiver,"CHECKS: More than 4 fields received in Hello. Dropping connection!");
             return false;
         }
 
         if(arr.length < 4){
-            Log.d("TCP " + receiver,"Less than 4 fields received in Hello. Dropping connection!");
+            Log.d("TCP " + receiver,"CHECKS: Less than 4 fields received in Hello. Dropping connection!");
             return false;
         }
 
@@ -501,7 +502,7 @@ public class InterNodeCrypto {
 
         // Check timestamp freshness
         if( !InterNodeCrypto.isTimestampFresh(arr[2]) ){
-            Log.d("TCP " + receiver,"The timestamp is not fresh!");
+            Log.d("TCP " + receiver,"CHECKS: The timestamp is not fresh!");
             return false;
         }
 
@@ -523,32 +524,32 @@ public class InterNodeCrypto {
             cert = InterNodeCrypto.CertFromByteArray(arr[1]);
         }
         catch(Exception e){
-            Log.d("TCP " + receiver,"Certificate Field invalid!");
+            Log.d("TCP " + receiver,"CHECKS: Certificate Field invalid!");
             e.printStackTrace();
             return false;
         }
 
         // CHECK THAT THE CERTIFICATE IS SIGNED BY THE CA
         if( !(CryptoChecks.isCertificateSignedBy(cert,InterNodeCrypto.CA_cert)) ){
-            Log.d("TCP " + receiver,"The received certificate is not signed by the CA!");
+            Log.d("TCP " + receiver,"CHECKS: The received certificate is not signed by the CA!");
             return false;
         }
 
         // CHECK NONCE SIZE
         if( arr[2].length != InterNodeCrypto.TIMESTAMP_BYTES ){
-            Log.d("TCP " + receiver,"Incorrect timestampe size!");
+            Log.d("TCP " + receiver,"CHECKS: Incorrect timestampe size!");
             return false;
         }
 
         // CHECK THAT THE timestamp IS SIGNED CORRECTLY
         try {
             if ( !(CryptoChecks.isSignedByCert(arr[2], arr[3], cert)) ) {
-                Log.d("TCP " + receiver,"The signed timestamp is NOT SIGNED by the public key of the certificate!");
+                Log.d("TCP " + receiver,"CHECKS: The signed timestamp is NOT SIGNED by the public key of the certificate!");
                 return false;
             }
         }
         catch (Exception e){
-            Log.d("TCP " + receiver,"Can't verify the timestamp signature!");
+            Log.d("TCP " + receiver,"CHECKS: Can't verify the timestamp signature!");
             e.printStackTrace();
             return false;
         }

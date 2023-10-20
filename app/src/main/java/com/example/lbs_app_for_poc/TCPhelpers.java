@@ -46,7 +46,7 @@ public class TCPhelpers {
         return decimalString.toString();*/
     }
 
-    public static String byteArrayToDecimalStringLast10(byte[] byteArray) {
+    /*public static String byteArrayToDecimalStringLast10(byte[] byteArray) {
         int limit = Math.min(10,byteArray.length);
         StringBuilder decimalString = new StringBuilder();
         byte [] fourstThing = new byte[limit];
@@ -64,7 +64,7 @@ public class TCPhelpers {
             decimalString.setLength(decimalString.length() - 2);
         }
         return decimalString.toString();
-    }
+    }*/
 
     public static String byteArrayToDecimalStringFirst10(byte[] byteArray) {
         int limit = Math.min(10,byteArray.length);
@@ -148,7 +148,7 @@ public class TCPhelpers {
         return buffer.array();
     }
 
-    public static ByteArrayOutputStream receiveBuffedBytesNoLimit(DataInputStream dis) throws IOException {
+    /*public static ByteArrayOutputStream receiveBuffedBytesNoLimit(DataInputStream dis) throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         byte[] buffer = new byte[100]; // 100 bytes
         int bytesRead;
@@ -157,6 +157,7 @@ public class TCPhelpers {
             baos.write(buffer, 0, bytesRead);
             total_bytes += bytesRead;
             if (bytesRead < buffer.length) {
+                // But there are cases that it's not the last block so deprecate this function and make everything be
                 Log.d("TCP server","Instance where we are not receiving anything! Must be last block.");
                 break; // The buffer is not filled up that means we have reached the EOF
             }
@@ -166,29 +167,47 @@ public class TCPhelpers {
             }
         }
         return baos;
-    }
+    }*/
 
     public static byte [] buffRead(int numOfBytes, DataInputStream dis) throws IOException {
+
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         int totalBytesRead = 0;
+        int waiting_time_given = 0;
+        final int MIN_BUFF_SIZE = Math.min(1000,numOfBytes);
+        byte [] buffer = new byte[MIN_BUFF_SIZE];
+
         while(true){
+
             int BytesLeft2Read = numOfBytes - totalBytesRead;
-            int bufferSize = Math.min(50,BytesLeft2Read);
-            /*if (bufferSize != 100) {
-                Log.d("BuffRead", "Size now is " + bufferSize + " and BytesLeft2Read = " + BytesLeft2Read + " out of " + numOfBytes );
-            }*/
-            byte [] buffer = new byte[bufferSize];
-            int tempBytesRead = dis.read(buffer);
-            if(tempBytesRead!=bufferSize) {
-                if( tempBytesRead < bufferSize ){
-                    // If they are less maybe we are still to receive them
-                    Log.d("BuffRead","WARNING: We read less than what we expected!");
+            int bufferSize = Math.min(MIN_BUFF_SIZE,BytesLeft2Read);
+
+            if(bufferSize != buffer.length){ // we re-initialize only when we have less to read.
+                buffer = new byte[bufferSize];
+            }
+            int tempBytesRead = dis.read(buffer); // reading the bytes that we have now
+
+            if(tempBytesRead > bufferSize){
+                throw new RuntimeException("Impossible how could we have read more tempBytesReads than the size of our buffer!");
+            }
+            if(tempBytesRead == 0){
+                // we have read no bytes which means we should give some chance to the other party to forward those
+                if(waiting_time_given > 10){
+                    throw new IOException("The BuffRead function has given 3 seconds to the other party to write in the buffer already! But it failed to do so!");
                 }
-                else {
-                    throw new RuntimeException();
+                // If they are less maybe we are still to receive them
+                Log.d("BuffRead","WARNING: We read less than what we expected! We will sleep for 2 seconds to give time to the other party to send the bytes");
+                try {
+                    Thread.sleep(300);
+                    waiting_time_given++;
                 }
+                catch (Exception ex){
+                    throw new IOException("Could not sleep in thread! That's weird!");
+                }
+                continue;
             }
             if(tempBytesRead != -1) {
+                waiting_time_given = 0; // reset in case of re-checking the buffer
                 totalBytesRead += tempBytesRead;
                 baos.write(buffer, 0, tempBytesRead);
                 if (totalBytesRead == numOfBytes) {
@@ -199,12 +218,13 @@ public class TCPhelpers {
                 Log.d("BuffRead","If we are on a blocking kind of socket how can we get -1 then?");
                 throw new RuntimeException("Bytes that were expected to be here are not!");
             }
+
         }
         byte [] readByteArray = baos.toByteArray();
         return readByteArray;
     }
 
-    public static String calculateSHA256Hash(byte[] byteArray) {
+    /*public static String calculateSHA256Hash(byte[] byteArray) {
         try {
             // Create a MessageDigest instance for SHA-256
             MessageDigest sha256Digest = MessageDigest.getInstance("SHA-256");
@@ -231,6 +251,6 @@ public class TCPhelpers {
             e.printStackTrace();
             return null;
         }
-    }
+    }*/
 
 }

@@ -14,7 +14,7 @@ import java.security.cert.X509Certificate;
 
 public class SigningServerInterations {
 
-    public static final int SIGNING_SERVER_TIMEOUT = 2000;
+    public static final int SIGNING_SERVER_TIMEOUT = 60000;
 
     // Using the function bellow when the peers are non existent or irresponsive
     public static byte [] DirectQuery(byte [] APICallBytesClientQuery, X509Certificate my_cert, PrivateKey my_key) throws Exception{
@@ -56,17 +56,16 @@ public class SigningServerInterations {
             byte[] CERTIFICATE_LENGTH = TCPhelpers.intToByteArray(QUERYING_PEER_CERTIFICATE.length);
             byte[] API_CALL_ENC_SSKEY = InterNodeCrypto.encryptWithPeerKey(APICallBytesClientQuery, InterNodeCrypto.CA_cert);
             byte[] API_CALL_ENC_LEN = TCPhelpers.intToByteArray(API_CALL_ENC_SSKEY.length);
-            CryptoTimestamp ct = InterNodeCrypto.getSignedTimestampWithConcatenationWithKey(APICallBytesClientQuery,my_key);
-            byte[] TIMESTAMP = ct.timestamp;
-            byte[] SIGNATURE_TIMESTAMP_QUERY = ct.signed_timestamp_conncatenated_with_info;
-            byte[] SIGNATURE_TQ_LEN = TCPhelpers.intToByteArray(SIGNATURE_TIMESTAMP_QUERY.length);
-
             ByteArrayOutputStream baosServingPeerQueryFwd = new ByteArrayOutputStream();
             baosServingPeerQueryFwd.write(DIREC_STRING);
             baosServingPeerQueryFwd.write(CERTIFICATE_LENGTH);
             baosServingPeerQueryFwd.write(QUERYING_PEER_CERTIFICATE);
             baosServingPeerQueryFwd.write(API_CALL_ENC_LEN);
             baosServingPeerQueryFwd.write(API_CALL_ENC_SSKEY);
+            CryptoTimestamp ct = InterNodeCrypto.getSignedTimestampWithConcatenationWithKey(APICallBytesClientQuery,my_key);
+            byte[] TIMESTAMP = ct.timestamp;
+            byte[] SIGNATURE_TIMESTAMP_QUERY = ct.signed_timestamp_conncatenated_with_info;
+            byte[] SIGNATURE_TQ_LEN = TCPhelpers.intToByteArray(SIGNATURE_TIMESTAMP_QUERY.length);
             baosServingPeerQueryFwd.write(TIMESTAMP);
             baosServingPeerQueryFwd.write(SIGNATURE_TQ_LEN);
             baosServingPeerQueryFwd.write(SIGNATURE_TIMESTAMP_QUERY);
@@ -164,7 +163,7 @@ public class SigningServerInterations {
         System.arraycopy(APICallBytesClientQuery, 0, QAconcatenation, 0, APICallBytesClientQuery.length);
         System.arraycopy(ANSWER, 0, QAconcatenation, APICallBytesClientQuery.length, ANSWER.length);
 
-        String hashOfConcatenation = TCPhelpers.calculateSHA256Hash(QAconcatenation);
+        // String hashOfConcatenation = TCPhelpers.calculateSHA256Hash(QAconcatenation);
 
         /*LoggingFragment.mutexTvdAL.lock();
         LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("APICallBytesClientQuery: " + TCPhelpers.byteArrayToDecimalStringFirst10(APICallBytesClientQuery), Color.MAGENTA ) );
@@ -224,17 +223,16 @@ public class SigningServerInterations {
             byte[] CERTIFICATE_LENGTH = TCPhelpers.intToByteArray(SERVING_PEER_CERTIFICATE.length);
             byte[] API_CALL_ENC_SSKEY = InterNodeCrypto.encryptWithPeerKey(APICallBytesClientQuery, InterNodeCrypto.CA_cert);
             byte[] API_CALL_ENC_LEN = TCPhelpers.intToByteArray(API_CALL_ENC_SSKEY.length);
-            CryptoTimestamp ct = InterNodeCrypto.getSignedTimestampWithConcatenationWithKey(APICallBytesClientQuery, my_key);
-            byte[] TIMESTAMP = ct.timestamp;
-            byte[] SIGNATURE_TIMESTAMP_QUERY = ct.signed_timestamp_conncatenated_with_info;
-            byte[] SIGNATURE_TQ_LEN = TCPhelpers.intToByteArray(SIGNATURE_TIMESTAMP_QUERY.length);
-
             ByteArrayOutputStream baosServingPeerQueryFwd = new ByteArrayOutputStream();
             baosServingPeerQueryFwd.write(PROXY_STRING);
             baosServingPeerQueryFwd.write(CERTIFICATE_LENGTH);
             baosServingPeerQueryFwd.write(SERVING_PEER_CERTIFICATE);
             baosServingPeerQueryFwd.write(API_CALL_ENC_LEN);
             baosServingPeerQueryFwd.write(API_CALL_ENC_SSKEY);
+            CryptoTimestamp ct = InterNodeCrypto.getSignedTimestampWithConcatenationWithKey(APICallBytesClientQuery, my_key);
+            byte[] TIMESTAMP = ct.timestamp;
+            byte[] SIGNATURE_TIMESTAMP_QUERY = ct.signed_timestamp_conncatenated_with_info;
+            byte[] SIGNATURE_TQ_LEN = TCPhelpers.intToByteArray(SIGNATURE_TIMESTAMP_QUERY.length);
             baosServingPeerQueryFwd.write(TIMESTAMP);
             baosServingPeerQueryFwd.write(SIGNATURE_TQ_LEN);
             baosServingPeerQueryFwd.write(SIGNATURE_TIMESTAMP_QUERY);

@@ -37,7 +37,7 @@ public class TCPServerControlClass{
     public static TCPServerAcceptingThread AcceptThread;
     public static final int max_transmission_cutoff = 300000; // 301K bytes per message exchange
     public static final char transmission_del = '|';
-    public static final int MAX_WAIT_QUERYING_NODE_MSEC = 1000;
+    public static final int MAX_WAIT_QUERYING_NODE_MSEC = 60000;
     public static LBSEntitiesConnectivity lbsEC = null;
 
     public static void initServingPort(){
