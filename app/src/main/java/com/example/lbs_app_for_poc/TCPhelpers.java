@@ -180,14 +180,11 @@ public class TCPhelpers {
         while(true){
 
             int BytesLeft2Read = numOfBytes - totalBytesRead;
-            int bufferSize = Math.min(MIN_BUFF_SIZE,BytesLeft2Read);
+            if(BytesLeft2Read == 0){break;}
 
-            if(bufferSize != buffer.length){ // we re-initialize only when we have less to read.
-                buffer = new byte[bufferSize];
-            }
             int tempBytesRead = dis.read(buffer); // reading the bytes that we have now
 
-            if(tempBytesRead > bufferSize){
+            if(tempBytesRead > buffer.length){
                 throw new RuntimeException("Impossible how could we have read more tempBytesReads than the size of our buffer!");
             }
             if(tempBytesRead == 0){
@@ -206,6 +203,7 @@ public class TCPhelpers {
                 }
                 continue;
             }
+
             if(tempBytesRead != -1) {
                 waiting_time_given = 0; // reset in case of re-checking the buffer
                 totalBytesRead += tempBytesRead;
@@ -221,6 +219,7 @@ public class TCPhelpers {
 
         }
         byte [] readByteArray = baos.toByteArray();
+        baos = null;
         return readByteArray;
     }
 

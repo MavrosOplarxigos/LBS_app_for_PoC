@@ -428,6 +428,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     update_peer_miss_second_try_tv();
                     QUERIES_PER_EXPERIMENT = TCPhelpers.byteArrayToIntLittleEndian(queries_per_experiment_bytes);
                     reset_experiment_counters();
+                    System.gc(); // Garbage collection lest this gathers the threads that we left before
                     Thread.sleep(2000); // This is to make sure that the rest of the devices have also managed to change the variables
 
                     for(int request=0;request<QUERIES_PER_EXPERIMENT;request++){
@@ -511,7 +512,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     update_experiment_status_tv("FINISHED");
 
                     // output sanity debugs
-
                     ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS_LOCK.lock();
                     Log.d("ExperimentThread","For experiment " + i + " I have received a TOTAL of  " + ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS + " requests.");
                     int queries_we_got_and_are_unaccounted_for = ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_TOTAL_REQUESTS - (ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS+ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_DROPPED_REQUESTS);
@@ -540,6 +540,11 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     catch(Exception e){
                         Log.d("ExperimentThread","Here is the issue: We can't send the DONE bytes back to the experiment remote server!");
                     }
+
+                    HIT_MISS_COUNTERS_LOCK.lock();
+                    byte [] hits_bytes = TCPhelpers.intToByteArray(PEER_HITS);
+                    dos.write(hits_bytes);
+                    HIT_MISS_COUNTERS_LOCK.unlock();
 
                 }
 

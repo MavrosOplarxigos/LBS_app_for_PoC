@@ -199,9 +199,11 @@ public class PeerInteractions {
             Log.d(debug_tag_peer(),"The size of the entire query message in bytes should be " + ClientQuery.length );
 
             // First communicate the size of the client query message
-            byte [] ClientQuerySizeBytes = TCPhelpers.intToByteArray(ClientQuery.length);
+            // byte [] ClientQuerySizeBytes = TCPhelpers.intToByteArray(ClientQuery.length);
             try {
-                dos.write(ClientQuerySizeBytes);
+                // dos.write(ClientQuerySizeBytes);
+                dos.writeInt(ClientQuery.length);
+                // dos.flush();
             }
             catch (Exception e){
                 safe_exit("Error: Could not write the ClientQuerySizeBytes!",e,s);

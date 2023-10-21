@@ -27,6 +27,7 @@ import androidx.navigation.Navigation;
 import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
 import android.Manifest;
+import android.view.WindowManager;
 
 import com.example.lbs_app_for_poc.databinding.ActivityMainBinding;
 
@@ -46,6 +47,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); // To keep screen on for experiments!
 
         flagForCredsCheck = false;
         hasManageAllFilesPermissionActivityLaunched = false;

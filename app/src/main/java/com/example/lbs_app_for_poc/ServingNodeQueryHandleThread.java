@@ -155,7 +155,8 @@ public class ServingNodeQueryHandleThread extends Thread {
 
         if(!introductionDone){
             if(SearchingNodeFragment.EXPERIMENT_IS_RUNNING){
-                throw new RuntimeException("It should be impossible that we get a failure on the hello phase between peers since they should always accept. peerWasTooFrequent = " + peerWasTooFrequent);
+                // throw new RuntimeException("It should be impossible that we get a failure on the hello phase between peers since they should always accept. peerWasTooFrequent = " + peerWasTooFrequent);
+                safe_exit("HELLO message dropped due to interface flooding: INFFLOOD",null,socket);
             }
             if(!peerWasTooFrequent) {
                 LoggingFragment.mutexTvdAL.lock();
@@ -187,15 +188,17 @@ public class ServingNodeQueryHandleThread extends Thread {
         // ["QUERY"] [DEC_QUERY_LEN] | [API_CALL_ENC_BYTES_LENGTH] | [API_CALL_ENC_BYTES] |
 
         // read the size of the client message first
-        byte [] client_message_size_bytes;
+        // byte [] client_message_size_bytes;
+        int client_message_size;
         try{
-            client_message_size_bytes = TCPhelpers.buffRead(4,dis);
+            client_message_size = dis.readInt();
+            // client_message_size_bytes = TCPhelpers.buffRead(4,dis);
         }
-        catch (IOException e){
+        catch (Exception e){
             safe_exit("Error: client message size bytes could not be received!",e,socket);
             return;
         }
-        int client_message_size = TCPhelpers.byteArrayToIntBigEndian(client_message_size_bytes);
+        // int client_message_size = TCPhelpers.byteArrayToIntBigEndian(client_message_size_bytes);
 
         byte[] bytesClientMessage;
         try{
