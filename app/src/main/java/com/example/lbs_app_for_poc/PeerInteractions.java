@@ -247,6 +247,15 @@ public class PeerInteractions {
                 safe_exit("Error: Could not retrieve the response from the SERVING PEER ANSWER FWD phase",e,s);
                 return;
             }
+
+            // send acknowledgement to the other device that we have received the forwarded answer
+            byte [] ClientFinishAck = "ACK".getBytes();
+            try {
+                dos.write(ClientFinishAck);
+            } catch (IOException e) {
+                throw new RuntimeException("Could not send the Client Finish Ack");
+            }
+
             // byte [] SP_AFWD = baosSP_AFWD.toByteArray();
 
             // Log.d(debug_tag_peer(),"SP_AFWD real length: " + SP_AFWD.length);
@@ -400,6 +409,7 @@ public class PeerInteractions {
             safe_close_socket(s);
             SearchingNodeFragment.mutexPeerResponseDecJson[index4AnswerStoring].unlock();
             return;
+
         }
 
         public String debug_tag_peer(){

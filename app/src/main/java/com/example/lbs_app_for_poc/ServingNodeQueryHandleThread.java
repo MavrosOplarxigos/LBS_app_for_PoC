@@ -339,10 +339,20 @@ public class ServingNodeQueryHandleThread extends Thread {
 
             dos.write(ServingPeerAnswerFwd);
 
+            // wait to receive acknowledgement that the answer was received instead of maybe prematurely closing the connection
+            byte[] bytesClientFinishAcknowledgment;
+            try{
+                bytesClientFinishAcknowledgment = TCPhelpers.buffRead(3,dis);
+            }
+            catch (Exception e) {
+                safe_exit("The Client Finish Ack couldn't be received!", e, socket);
+                return;
+            }
+            safe_close_socket(socket);
+
             COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK.lock();
             COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS++;
             COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK.unlock();
-
 
         }
         catch (Exception e){
@@ -351,6 +361,7 @@ public class ServingNodeQueryHandleThread extends Thread {
         }
 
         Log.d("Serving Node Query Handle Thread","SUCCESS: Peer " + peer_name + " @ " + peerIP + " was serviced!");
+
     }
 
     public byte [] crypto_check_query(byte [][] fields,int OriginalQueryArrayLength) throws NoSuchPaddingException, IllegalBlockSizeException, NoSuchAlgorithmException, BadPaddingException, InvalidKeyException, SignatureException, NoSuchProviderException, InvalidAlgorithmParameterException, CertificateEncodingException {
