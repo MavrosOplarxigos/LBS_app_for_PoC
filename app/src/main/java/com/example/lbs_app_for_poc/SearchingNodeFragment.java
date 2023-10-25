@@ -129,6 +129,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     public static int PEER_MISSES = 0;
     public static boolean EXPERIMENT_IS_RUNNING = false;
     public static boolean EXPERIMENT_READINESS_ONLY_WHEN_PEERS_AVAILABLE = true;
+    public static boolean HAVE_HAD_0_PEERS_AT_SOME_POINT = false;
 
     public static class ServingPeer{
         // public String DistinguishedName; I don't know the name. I expect only the IP and Port to be of a SOME peer.
@@ -446,6 +447,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // Lock all resources needed for this:
                         mutextServingPeerArrayList.lock(); // nobody is changing the peer list while we are using the peers
                         if(ServingPeerArrayList.size() == 0) {
+                            HAVE_HAD_0_PEERS_AT_SOME_POINT = true;
                             Log.d("ExperimentThread","Entering the case where we have NO serving peers from the beginning!");
                             byte[] decJson = null;
                             try {
@@ -530,6 +532,10 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     ServingNodeQueryHandleThread.COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK.unlock();
 
                     byte[] done_bytes = "DONE".getBytes();
+                    if(HAVE_HAD_0_PEERS_AT_SOME_POINT){
+                        HAVE_HAD_0_PEERS_AT_SOME_POINT = false;
+                        done_bytes = "FAIL".getBytes();
+                    }
                     try {
                         dos.write(done_bytes);
                         if(done_bytes.length!=4){
@@ -543,6 +549,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                     HIT_MISS_COUNTERS_LOCK.lock();
                     byte [] hits_bytes = TCPhelpers.intToByteArray(PEER_HITS);
+                    Log.d("ExperimentThread","I have send " + PEER_HITS + "hits!");
                     dos.write(hits_bytes);
                     HIT_MISS_COUNTERS_LOCK.unlock();
 
@@ -774,6 +781,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         // If there is no peer then we directly contact the signing server
                         // This is what we call a PEER MISS: due to no peers discovered/given
                         if(ServingPeerArrayList.size() == 0){
+                            HAVE_HAD_0_PEERS_AT_SOME_POINT = true;
                             LoggingFragment.mutexTvdAL.lock();
                             LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No Peers. Direct Request to Signing Server.",Color.DKGRAY));
                             byte [] decJson = null;
@@ -941,6 +949,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
 
                     // if the new peer array has nothing in it
                     if(ServingPeerArrayList.size() == 0){
+                        HAVE_HAD_0_PEERS_AT_SOME_POINT = true;
                         if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.mutexTvdAL.lock(); }
                         if(!EXPERIMENT_IS_RUNNING){ LoggingFragment.tvdAL.add( new LoggingFragment.TextViewDetails("No peers from forced peer discovery request. Direct request to signing server to retrieve answer to search.",Color.DKGRAY));}
                         byte [] decJson = null;
