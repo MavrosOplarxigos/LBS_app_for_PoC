@@ -177,6 +177,11 @@ public class SigningServerInterations {
         }
 
         Log.d("DIREC","We have indeed received the answer from directly contacting the signing server he len: " + ANSWER.length);
+
+        // Sending an ACK closing the socket so that the other party knows that we have received the data
+        dos.write("ACK".getBytes());
+        s.close();
+
         return ANSWER;
 
     }
@@ -362,6 +367,10 @@ public class SigningServerInterations {
         response_fields [0] = ENC_ANSWER_FOR_PEER;
         response_fields [1] = SIGNATURE_SS_QA;
         response_fields [2] = DecAnsLenByteArray;
+
+        // sending ACK to complete the interaction
+        dos.write("ACK".getBytes());
+        s.close();
 
         return response_fields;
 
