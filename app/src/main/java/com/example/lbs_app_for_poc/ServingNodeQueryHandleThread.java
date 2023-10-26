@@ -572,6 +572,13 @@ public class ServingNodeQueryHandleThread extends Thread {
             byte [] ServerHelloSizeBytes = TCPhelpers.intToByteArray(ServerHello.length);
             dos.write(ServerHelloSizeBytes);
             dos.write(ServerHello);
+
+            // wait for explicit acknowledgment instead
+            // we now restore a sensible timeout since 3 bytes should not be much to send
+            s.setSoTimeout(5000);
+            byte [] ClientFinishAck = TCPhelpers.buffRead(3,dis);
+            s.close();
+
         }
         catch (Exception e){
             safe_exit("Could not send serving peer Hello",e,s);

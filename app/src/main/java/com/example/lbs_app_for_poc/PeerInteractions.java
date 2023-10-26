@@ -43,6 +43,7 @@ public class PeerInteractions {
         public X509Certificate peer_cert = null; // Retrieved from SERVER HELLO (serving peer hello)
         public String peer_name = null;
         public PrivateKey my_key = null; // We get our key based on our index4AnswerStoring
+        public static boolean NOT_OUTED_HELLO_EXEP = true;
 
         public PeerInteractionThread(int i, InetAddress ip, int port, byte [] APICallBytesClientQuery, int pseudo_choice){
             index4AnswerStoring = i;
@@ -496,6 +497,10 @@ public class PeerInteractions {
                 bytesServerHello = TCPhelpers.buffRead(server_hello_size,dis); // fix this to get hello message before receiving so that we get the exact one
                 Log.d("Peer Connectivity","Serving Peer Hello Received");
 
+                // send acknowledgement that we have read everything
+                byte [] ClientFinishAck = "ACK".getBytes();
+                dos.write(ClientFinishAck); // The other guy is gonna close the socket for sure after reading
+
                 // SEPARATING THE FIELDS
                 byte [][] fieldsServerHello = new byte[4][];
                 int ci = 0; // current index on bytesServerHello
@@ -583,9 +588,16 @@ public class PeerInteractions {
                 peer_name = InterNodeCrypto.getCommonName(peer_cert);
                 Log.d("Peer Connectivity","SUCCESS THE PEER CERTIFICATE IS NOW READY TO USE!");
                 return true;
+
             } catch (Exception e) {
+
                 Log.d("Peer Connectivity","Error on the HELLO phase");
-                if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+
+                //if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+                //}
+                if(NOT_OUTED_HELLO_EXEP) {
+                    NOT_OUTED_HELLO_EXEP = false;
+                    Log.d("RAFRAF", "The exception should be below");
                     e.printStackTrace();
                 }
                 return false;
