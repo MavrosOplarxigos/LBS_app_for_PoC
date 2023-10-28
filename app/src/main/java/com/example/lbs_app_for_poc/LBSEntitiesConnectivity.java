@@ -195,6 +195,7 @@ public class LBSEntitiesConnectivity implements Serializable {
                 // send message
                 Log.d("LBS entities connectivity","the lenght of the mssages bout to send " + infoMSG.length);
                 dos.write(infoMSG);
+                dos.flush();
 
                 Log.d("LBS entities connectivity","Wrote the message!");
 
@@ -382,6 +383,7 @@ public class LBSEntitiesConnectivity implements Serializable {
                 // send message
                 Log.d("LBS entities connectivity","the lenght of the mssages bout to send " + crdsMSG.length);
                 dos.write(crdsMSG);
+                dos.flush();
                 Log.d("LBS entities connectivity","Wrote the CRDS message!");
 
                 // Receive VALID or INVLD (only 5 bytes)

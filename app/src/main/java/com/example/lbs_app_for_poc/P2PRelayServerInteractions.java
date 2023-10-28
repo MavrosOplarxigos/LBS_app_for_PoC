@@ -369,6 +369,7 @@ public class P2PRelayServerInteractions {
 
         byte [] ClientHello = baosCH.toByteArray();
         dos.write(ClientHello);
+        dos.flush();
 
     }
 
@@ -392,6 +393,7 @@ public class P2PRelayServerInteractions {
 
         byte [] ClientHello = baosCH.toByteArray();
         dos.write(ClientHello);
+        dos.flush();
 
         return cryptoTimestamp;
 
@@ -456,6 +458,7 @@ public class P2PRelayServerInteractions {
         byte [] ClientAvailability = baosClientAvailability.toByteArray();
 
         dos.write(ClientAvailability);
+        dos.flush();
         return  myIpAddress.getHostAddress() + ":" + TCPServerControlClass.MyServingPort;
 
     }

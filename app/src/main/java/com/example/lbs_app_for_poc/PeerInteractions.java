@@ -204,6 +204,7 @@ public class PeerInteractions {
             try {
                 // dos.write(ClientQuerySizeBytes);
                 dos.writeInt(ClientQuery.length);
+                dos.flush();
                 // dos.flush();
             }
             catch (Exception e){
@@ -213,6 +214,7 @@ public class PeerInteractions {
 
             try{
                 dos.write(ClientQuery);
+                dos.flush();
             }
             catch (Exception e){
                 safe_exit("Error: Could not write the client query in output sream!",e,s);
@@ -223,7 +225,7 @@ public class PeerInteractions {
             // 4.1.1) GET ANSWER length
             byte [] reply_size_bytes = new byte[0];
             try {
-                reply_size_bytes = TCPhelpers.buffRead(4,dis);
+                reply_size_bytes = TCPhelpers.buffRead(4,dis); // ERROR DETECTED HERE!
             } catch (IOException e) {
                 safe_exit("Error: Could not read the reply size from remote peer",e,s);
                 return;
@@ -253,6 +255,7 @@ public class PeerInteractions {
             byte [] ClientFinishAck = "ACK".getBytes();
             try {
                 dos.write(ClientFinishAck);
+                dos.flush();
             } catch (IOException e) {
                 throw new RuntimeException("Could not send the Client Finish Ack");
             }
@@ -449,6 +452,16 @@ public class PeerInteractions {
                 DataInputStream dis = new DataInputStream(s.getInputStream());
                 DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 
+                // Read the "ACCEPT" string from the remote player
+
+                s.setSoTimeout(5000);
+                byte [] ServingNodeAccept = TCPhelpers.buffRead(6,dis);
+                if(!(new String(ServingNodeAccept,StandardCharsets.UTF_8)).equals("ACCEPT")){
+                    Log.d("PARANOIA_ACCEPT","Didn't receive ACCEPT from the Serving Node!");
+                    return false;
+                }
+                s.setSoTimeout(SERVING_PEER_CONNECTION_TIMEOUT_MSEC_HELLO);
+
                 // 1) HANDSHAKE STEP 1: SEND CLIENT PSEUDO CREDS
                 // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
 
@@ -473,7 +486,9 @@ public class PeerInteractions {
                 // Send the Hello Size
                 byte [] Hello_Size_Bytes = TCPhelpers.intToByteArray(ClientHello.length);
                 dos.write(Hello_Size_Bytes);
+                dos.flush();
                 dos.write(ClientHello);
+                dos.flush();
 
                 Log.d("PeerConnectivity","SUCCESS: Sent Client Hello!");
 
@@ -499,7 +514,8 @@ public class PeerInteractions {
 
                 // send acknowledgement that we have read everything
                 byte [] ClientFinishAck = "ACK".getBytes();
-                dos.write(ClientFinishAck); // The other guy is gonna close the socket for sure after reading
+                dos.write(ClientFinishAck);
+                dos.flush();
 
                 // SEPARATING THE FIELDS
                 byte [][] fieldsServerHello = new byte[4][];

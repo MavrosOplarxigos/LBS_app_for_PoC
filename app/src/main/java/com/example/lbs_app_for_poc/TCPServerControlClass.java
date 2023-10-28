@@ -57,10 +57,11 @@ public class TCPServerControlClass{
 
         public static ServerSocket serverSocket;
         public static final int WAIT_AFTER_ACCEPT_FAILURE_MSEC = 300;
+        public static final int MAX_SIMULTANEOUS_ACCEPTS = 50000;
 
         public TCPServerAcceptingThread(){
             try {
-                serverSocket = new ServerSocket(TCPServerControlClass.MyServingPort);
+                serverSocket = new ServerSocket(TCPServerControlClass.MyServingPort,MAX_SIMULTANEOUS_ACCEPTS);
             }
             catch (Exception e){
                 Log.d("TCPServerAcceptingThread","Could not construct the socket for listenting!");
@@ -93,7 +94,10 @@ public class TCPServerControlClass{
                         Log.d("AcceptingThread","Sleeping Error!");
                         ex.printStackTrace();
                     }
-                    continue;
+                }
+                catch (Exception e){
+                    Log.d("PARANOIA_SPAWNER","The nima spawner could not accept the reason is: ");
+                    e.printStackTrace();
                 }
             }
         }

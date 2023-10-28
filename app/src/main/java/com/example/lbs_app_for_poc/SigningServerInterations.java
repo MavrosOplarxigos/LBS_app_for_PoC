@@ -73,6 +73,7 @@ public class SigningServerInterations {
             byte [] QueryingPeerQuery = baosServingPeerQueryFwd.toByteArray();
 
             dos.write(QueryingPeerQuery);
+            dos.flush();
         }
         catch (Exception e){
             Log.d("QUERYING PEER DIRECT QUERY","Could not generate the fields for QUERYING PEER DIRECT QUERY");
@@ -180,7 +181,8 @@ public class SigningServerInterations {
 
         // Sending an ACK closing the socket so that the other party knows that we have received the data
         dos.write("ACK".getBytes());
-        s.close();
+        dos.flush();
+        // s.close();
 
         return ANSWER;
 
@@ -245,6 +247,7 @@ public class SigningServerInterations {
             byte [] ServingPeerQueryFwd = baosServingPeerQueryFwd.toByteArray();
 
             dos.write(ServingPeerQueryFwd);
+            dos.flush();
         }
         catch (Exception e){
             Log.d("SERVING PEER QUERY FWD","Could not generate the fields for SERVING PEER QUERY FWD");
@@ -370,7 +373,8 @@ public class SigningServerInterations {
 
         // sending ACK to complete the interaction
         dos.write("ACK".getBytes());
-        s.close();
+        dos.flush();
+        // s.close();
 
         return response_fields;
 

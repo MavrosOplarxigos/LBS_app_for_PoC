@@ -110,19 +110,27 @@ public class ServingNodeQueryHandleThread extends Thread {
 
     public static Lock COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS_LOCK = new ReentrantLock();
     public static int COUNTER_OF_EXPERIMENT_SERVICED_REQUESTS = 0;
+    public boolean paranoia_debug = true;
 
     public ServingNodeQueryHandleThread(Socket socket){
+
         peerWasTooFrequent = false;
         this.socket = socket;
-        LoggingFragment.mutexTvdAL.lock();
-        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepted Service Request from " + this.socket.getInetAddress().getHostAddress() , Color.MAGENTA ) );
-        LoggingFragment.mutexTvdAL.unlock();
+
+        if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+            LoggingFragment.mutexTvdAL.lock();
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Accepted Service Request from " + this.socket.getInetAddress().getHostAddress(), Color.MAGENTA));
+            LoggingFragment.mutexTvdAL.unlock();
+        }
+
         peerIP = socket.getInetAddress().getHostAddress();
         transmission_del = TCPServerControlClass.transmission_del;
+
         my_PSEUDO_CREDS_TO_COPY_lock.lock();
         my_cert = my_cert_to_copy;
         my_key = my_key_to_copy;
         my_PSEUDO_CREDS_TO_COPY_lock.unlock();
+
     }
 
     @Override
@@ -137,6 +145,11 @@ public class ServingNodeQueryHandleThread extends Thread {
 
         // For the experiments there is the probability that we won't answer to the querying user's hello
         if( random_result >= SearchingNodeFragment.ANSWER_PROBABILITY_PCENT ){
+
+            if(paranoia_debug){
+                Log.d("PARANOIA_CHANCE","paranoia = " + SearchingNodeFragment.ANSWER_PROBABILITY_PCENT);
+            }
+
             if(SearchingNodeFragment.ANSWER_PROBABILITY_PCENT == 100){
                 throw new RuntimeException("OK something is very weird because we are not responding when the probability is " + SearchingNodeFragment.ANSWER_PROBABILITY_PCENT);
             }
@@ -326,6 +339,7 @@ public class ServingNodeQueryHandleThread extends Thread {
 
             byte [] AnswerSizeDisclosureBytes = TCPhelpers.intToByteArray(ServingPeerAnswerFwd.length);
             dos.write(AnswerSizeDisclosureBytes);
+            dos.flush();
 
             /*LoggingFragment.mutexTvdAL.lock();
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("SP_FWD Reply size length: " + ServingPeerAnswerFwd.length, Color.MAGENTA ) );
@@ -338,11 +352,16 @@ public class ServingNodeQueryHandleThread extends Thread {
             LoggingFragment.mutexTvdAL.unlock();*/
 
             dos.write(ServingPeerAnswerFwd);
+            dos.flush();
 
             // wait to receive acknowledgement that the answer was received instead of maybe prematurely closing the connection
             byte[] bytesClientFinishAcknowledgment;
             try{
                 bytesClientFinishAcknowledgment = TCPhelpers.buffRead(3,dis);
+                String ClientFinishAckString = new String(bytesClientFinishAcknowledgment,StandardCharsets.UTF_8);
+                if( !ClientFinishAckString.equals("ACK") ){
+                    safe_exit("PARANOIA_ACK_QUERY",null,socket);
+                }
             }
             catch (Exception e) {
                 safe_exit("The Client Finish Ack couldn't be received!", e, socket);
@@ -419,6 +438,17 @@ public class ServingNodeQueryHandleThread extends Thread {
             return false;
         }
 
+        // first send an ACCEPT message so that the querying peer knows we have accepted its request
+        byte [] ServingNodeAccept = "ACCEPT".getBytes();
+        try {
+            dos.write(ServingNodeAccept);
+            dos.flush();
+        }
+        catch (Exception e){
+            safe_exit("PARANOIA_ACCEPTING " + "We can't even accept serving!",e,s);
+            return false;
+        }
+
         // 1) HANDSHAKE STEP 1: RECEIVE CLIENT PSEUDO CREDS
         // [HELLO]:5 | [CERTIFICATE BYTES]:~2K | [timestamp]:8 | [signed_timestamp]: 256
 
@@ -427,14 +457,15 @@ public class ServingNodeQueryHandleThread extends Thread {
         try{
             client_hello_size_bytes = TCPhelpers.buffRead(4,dis);
         }
-        catch (IOException e){
+        catch (Exception e){
             safe_exit("Error: On receiving the querying peer hello message size",e,s);
             return false;
         }
-        int client_hello_size = TCPhelpers.byteArrayToIntBigEndian(client_hello_size_bytes);
-        Log.d("SNQHT","The hello size from the querying peer is " + client_hello_size);
 
-        Log.d("SNQHT","Now started carrying out the HELLO phase!");
+        int client_hello_size = TCPhelpers.byteArrayToIntBigEndian(client_hello_size_bytes);
+        // Log.d("SNQHT","The hello size from the querying peer is " + client_hello_size);
+        // Log.d("SNQHT","Now started carrying out the HELLO phase!");
+
         byte[] bytesClientHello;
         try {
             bytesClientHello = TCPhelpers.buffRead(client_hello_size,dis);
@@ -521,7 +552,7 @@ public class ServingNodeQueryHandleThread extends Thread {
             safe_exit("QUERYING PEER HELLO: The received fields are incorrect! Closing the connection.",null,s);
             return false;
         }
-        Log.d(debug_tag(),"SUCCESS: Client Hello received and has VALID fields!");
+        // Log.d(debug_tag(),"SUCCESS: Client Hello received and has VALID fields!");
 
         // SAVING THE QUERYING NODE CREDENTIALS AND CARRYING OUT RECENCY CHECK
         try {
@@ -550,10 +581,12 @@ public class ServingNodeQueryHandleThread extends Thread {
             return false;
         }
 
-        Log.d(debug_tag(),"SUCCESS: Client pseudonym requests are NOT too frequent!");
+        // Log.d(debug_tag(),"SUCCESS: Client pseudonym requests are NOT too frequent!");
+
         // 2) HANDSHAKE STEP 2: SEND SERVER CREDENTIALS TO THE CLIENT
         // [HELLO]:5 | [CERTIFICATE LENGTH] | [CERTIFICATE BYTES]:~2K | [timestamp]: 8 | [signed timestamp]: 256
         try {
+
             byte[] helloFieldServerHello = "HELLO".getBytes();
             byte[] certificateFieldServerHello = my_cert.getEncoded();
             byte[] certificateFieldServerHelloLength = ("" + certificateFieldServerHello.length).toString().getBytes();
@@ -571,13 +604,18 @@ public class ServingNodeQueryHandleThread extends Thread {
             byte [] ServerHello = baosServerHello.toByteArray();
             byte [] ServerHelloSizeBytes = TCPhelpers.intToByteArray(ServerHello.length);
             dos.write(ServerHelloSizeBytes);
+            dos.flush();
             dos.write(ServerHello);
+            dos.flush();
 
             // wait for explicit acknowledgment instead
-            // we now restore a sensible timeout since 3 bytes should not be much to send
-            s.setSoTimeout(5000);
             byte [] ClientFinishAck = TCPhelpers.buffRead(3,dis);
-            s.close();
+            String ack_string = new String(ClientFinishAck,StandardCharsets.UTF_8);
+
+            if(!ack_string.equals("ACK")){
+                safe_exit("The other party did not sent an ACK!",null,s);
+                return false;
+            }
 
         }
         catch (Exception e){

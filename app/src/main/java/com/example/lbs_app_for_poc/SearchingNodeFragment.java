@@ -372,6 +372,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 // Tell the experiment server that you are ready
                 byte [] optionField = "EXPR".getBytes();
                 dos.write(optionField);
+                dos.flush();
                 Log.d("RAFAIL OPTION FIELD FOR EXPERIMENT","Sent!");
                 // byte [] nameLengthByteArray = TCPhelpers.intToByteArray((int)(lbsEC.MY_REAL_NODE_NAME.length())); // signed int
                 // byte [] nameByteArray = lbsEC.MY_REAL_NODE_NAME.getBytes();
@@ -430,7 +431,8 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     QUERIES_PER_EXPERIMENT = TCPhelpers.byteArrayToIntLittleEndian(queries_per_experiment_bytes);
                     reset_experiment_counters();
                     System.gc(); // Garbage collection lest this gathers the threads that we left before
-                    Thread.sleep(2000); // This is to make sure that the rest of the devices have also managed to change the variables
+                    Thread.sleep(10000); // This is to make sure that the rest of the devices have also managed to change the variables
+                    System.gc();
 
                     for(int request=0;request<QUERIES_PER_EXPERIMENT;request++){
 
@@ -538,6 +540,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     }
                     try {
                         dos.write(done_bytes);
+                        dos.flush();
                         if(done_bytes.length!=4){
                             Log.d("ExperimentThread","Error: The done bytes should be 4 and they are not! That's what's causing the error!");
                         }
@@ -551,6 +554,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     byte [] hits_bytes = TCPhelpers.intToByteArray(PEER_HITS);
                     Log.d("ExperimentThread","I have send " + PEER_HITS + "hits!");
                     dos.write(hits_bytes);
+                    dos.flush();
                     HIT_MISS_COUNTERS_LOCK.unlock();
 
                 }
