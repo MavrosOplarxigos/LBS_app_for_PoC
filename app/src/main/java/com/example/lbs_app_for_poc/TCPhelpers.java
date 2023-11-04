@@ -129,7 +129,8 @@ public class TCPhelpers {
     }
 
     public static byte[] intToByteArray(int number) {
-        ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+        // ByteBuffer buffer = ByteBuffer.allocate(Integer.BYTES);
+        ByteBuffer buffer = ByteBuffer.allocate(4);
         buffer.putInt(number);
         return buffer.array();
     }
@@ -174,7 +175,7 @@ public class TCPhelpers {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         int totalBytesRead = 0;
         int waiting_time_given = 0;
-        final int MIN_BUFF_SIZE = Math.min(1000,numOfBytes);
+        final int MIN_BUFF_SIZE = Math.min(100000,numOfBytes);
         byte [] buffer = new byte[MIN_BUFF_SIZE];
 
         while(true){
@@ -214,7 +215,9 @@ public class TCPhelpers {
             }
             else{
                 Log.d("BuffRead","If we are on a blocking kind of socket how can we get -1 then?");
-                throw new RuntimeException("Bytes that were expected to be here are not!");
+                throw new RuntimeException("Bytes that were expected to be here are not!\n" +
+                        "BUFFREADERR -> Expected: " + numOfBytes + " Got: " + totalBytesRead
+                );
             }
 
         }

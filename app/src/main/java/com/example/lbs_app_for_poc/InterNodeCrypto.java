@@ -295,7 +295,7 @@ public class InterNodeCrypto {
 
         // Determine the maximum block size for decryption
         int blockSize = cipher.getBlockSize();
-        Log.d("CRYPTOBLOCKS","The DECRYPT block size is " + blockSize);
+        // Log.d("CRYPTOBLOCKS","The DECRYPT block size is " + blockSize);
 
         // Calculate the size of the output array
         int outputSize = (int) Math.ceil((double) input.length / blockSize) * cipher.getOutputSize(blockSize);
@@ -387,6 +387,11 @@ public class InterNodeCrypto {
     }
 
     public static boolean isTimestampFresh(byte [] timestamp){
+
+        if(SearchingNodeFragment.EXPERIMENT_IS_RUNNING){
+            return true;
+        }
+
         long currentTime = System.currentTimeMillis() + NTP_TIME_OFFSET; // NTP time
         long timestampValue = ByteBuffer.wrap(timestamp).getLong();
 
@@ -397,7 +402,7 @@ public class InterNodeCrypto {
 
         long difference = currentTime - timestampValue;
         // adapted the strictness of the timestamp based on whether we are running an experiment or not
-        long freshnessThreshold = SearchingNodeFragment.EXPERIMENT_IS_RUNNING ? 60000 : 3500;
+        long freshnessThreshold = SearchingNodeFragment.EXPERIMENT_IS_RUNNING ? difference : 3500;
 
         return difference <= freshnessThreshold;
     }

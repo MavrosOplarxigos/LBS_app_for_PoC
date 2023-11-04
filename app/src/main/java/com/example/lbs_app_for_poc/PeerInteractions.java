@@ -44,6 +44,9 @@ public class PeerInteractions {
         public String peer_name = null;
         public PrivateKey my_key = null; // We get our key based on our index4AnswerStoring
         public static boolean NOT_OUTED_HELLO_EXEP = true;
+        public static final int MAX_RECEIVE_SIZE = 100000;
+        public static final int MAX_SEND_SIZE = 64000;
+        public boolean HAVE_THE_OTHER_PEER_ACCEPTED;
 
         public PeerInteractionThread(int i, InetAddress ip, int port, byte [] APICallBytesClientQuery, int pseudo_choice){
             index4AnswerStoring = i;
@@ -66,41 +69,71 @@ public class PeerInteractions {
             SearchingNodeFragment.mutexPeerResponseDecJson[index4AnswerStoring].lock(); // locking my response index
             SearchingNodeFragment.peer_thread_entered_counter.countDown(); // notifying the collection thread that this peer has entered
 
-            Socket s = new Socket();
-            try {
-                s.connect(new InetSocketAddress(this.peerIP, this.peerPort), SERVING_PEER_CONNECTION_TIMEOUT_MSEC);
-            }
-            catch (SocketTimeoutException socketTimeoutException){
-                safe_exit("ERROR: Socket connect timeout!",socketTimeoutException,s);
-                return;
-            }
-            catch (IOException e) {
-                safe_exit("ERROR: Socket connect failure unrelated to timeout!",e,s);
-                return;
-            }
+            Socket s;
+            while(true) {
 
-            // setting pre-hello socket timeout
-            try {
-                s.setSoTimeout(SERVING_PEER_CONNECTION_TIMEOUT_MSEC_HELLO);
-            } catch (SocketException e) {
-                LoggingFragment.mutexTvdAL.lock();
-                LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("COULD NOT set client socket timeout pre HELLO!", Color.RED) );
-                LoggingFragment.mutexTvdAL.unlock();
-                safe_exit("ERROR: Could not set socket timeout!",null,s);
-                return;
-            }
+                HAVE_THE_OTHER_PEER_ACCEPTED = false;
 
-            // HELLO phase
-            boolean introductionsDone = configure_peer_connectivity(s);
-            if(!introductionsDone){
-                if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
-                    LoggingFragment.mutexTvdAL.lock();
-                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with " + peerIP, Color.RED));
-                    LoggingFragment.mutexTvdAL.unlock();
+                // we should re-iterate this loop if we have received an ACCEPT from the remote side
+                s = new Socket();
+                try {
+                    s.setReceiveBufferSize(MAX_RECEIVE_SIZE); // BUFFER INCREASE POINT
+                    s.setTcpNoDelay(true); // NO - DELAY
+                    s.setSendBufferSize(MAX_SEND_SIZE);
+                } catch (SocketException e) {
+                    throw new RuntimeException("NEW IMPROVEMENT EFFORT" + e);
                 }
-                safe_exit("ERROR: HELLO interaction after socket connection failure!",null,s);
-                return;
+
+                try {
+                    s.connect(new InetSocketAddress(this.peerIP, this.peerPort), SERVING_PEER_CONNECTION_TIMEOUT_MSEC);
+                } catch (SocketTimeoutException socketTimeoutException) {
+                    safe_exit("ERROR: Socket connect timeout!", socketTimeoutException, s);
+                    return;
+                } catch (IOException e) {
+                    safe_exit("ERROR: Socket connect failure unrelated to timeout!", e, s);
+                    return;
+                }
+
+                // setting pre-hello socket timeout
+                try {
+                    s.setSoTimeout(SERVING_PEER_CONNECTION_TIMEOUT_MSEC_HELLO);
+                } catch (SocketException e) {
+                    LoggingFragment.mutexTvdAL.lock();
+                    LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("COULD NOT set client socket timeout pre HELLO!", Color.RED));
+                    LoggingFragment.mutexTvdAL.unlock();
+                    safe_exit("ERROR: Could not set socket timeout!", null, s);
+                    return;
+                }
+
+                // HELLO phase
+                boolean introductionsDone = configure_peer_connectivity(s);
+                if (!introductionsDone && !HAVE_THE_OTHER_PEER_ACCEPTED) {
+                    if (!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+                        LoggingFragment.mutexTvdAL.lock();
+                        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello FAILURE with " + peerIP, Color.RED));
+                        LoggingFragment.mutexTvdAL.unlock();
+                    }
+                    safe_exit("ERROR: HELLO interaction after socket connection failure!", null, s);
+                    return;
+                }
+                if(introductionsDone){
+                    break;
+                }
+
+                // otherwise we have not done the hello phase but the other peer accepted to do it
+                // so there must have been a connection failure
+                try {
+                    s.close();
+                    Thread.sleep(500);
+                    System.gc();
+                }
+                catch (Exception e){
+                    e.printStackTrace();
+                    return;
+                }
+
             }
+
             /*LoggingFragment.mutexTvdAL.lock();
             LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Hello SUCCESS with: " + peer_name + "@ " + peerIP, Color.GREEN ) );
             LoggingFragment.mutexTvdAL.unlock();*/
@@ -226,8 +259,8 @@ public class PeerInteractions {
             byte [] reply_size_bytes = new byte[0];
             try {
                 reply_size_bytes = TCPhelpers.buffRead(4,dis); // ERROR DETECTED HERE!
-            } catch (IOException e) {
-                safe_exit("Error: Could not read the reply size from remote peer",e,s);
+            } catch (Exception e) {
+                safe_exit("BUFFREADERR -> Error: Could not read the reply size from remote peer " + this.peerIP + " , " + this.peer_name ,e,s);
                 return;
             }
             int reply_size = TCPhelpers.byteArrayToIntBigEndian(reply_size_bytes);
@@ -247,7 +280,7 @@ public class PeerInteractions {
                 SP_AFWD = TCPhelpers.buffRead(reply_size,dis);
             }
             catch (Exception e){
-                safe_exit("Error: Could not retrieve the response from the SERVING PEER ANSWER FWD phase",e,s);
+                safe_exit("BUFFREADERR -> Error: Could not retrieve the response from the SERVING PEER ANSWER FWD phase from " + peer_name ,e,s);
                 return;
             }
 
@@ -453,9 +486,20 @@ public class PeerInteractions {
                 DataOutputStream dos = new DataOutputStream(s.getOutputStream());
 
                 // Read the "ACCEPT" string from the remote player
+                byte [] ServingNodeAccept;
+                try {
+                    ServingNodeAccept = TCPhelpers.buffRead(6, dis);
+                }
+                catch (Exception e){
+                    e.printStackTrace();
+                    Log.d("BUFFREADERR","BUFFREADERR -> could not receive the ACCEPT from the peer to proceed with the hello phase. Peer: " + peer_name);
+                    return false;
+                }
 
-                s.setSoTimeout(5000);
-                byte [] ServingNodeAccept = TCPhelpers.buffRead(6,dis);
+                // we mark that the remote side has accepted and thus we will retry to communicate
+                // in the event that there is a failure!
+                HAVE_THE_OTHER_PEER_ACCEPTED = true;
+
                 if(!(new String(ServingNodeAccept,StandardCharsets.UTF_8)).equals("ACCEPT")){
                     Log.d("PARANOIA_ACCEPT","Didn't receive ACCEPT from the Serving Node!");
                     return false;
@@ -485,10 +529,16 @@ public class PeerInteractions {
                 // Log.d("PeerConnectivity", "ClientHelloDebugString: " + ClientHelloDebugString);
                 // Send the Hello Size
                 byte [] Hello_Size_Bytes = TCPhelpers.intToByteArray(ClientHello.length);
-                dos.write(Hello_Size_Bytes);
-                dos.flush();
-                dos.write(ClientHello);
-                dos.flush();
+
+                try {
+                    dos.write(Hello_Size_Bytes);
+                    dos.flush();
+                    dos.write(ClientHello);
+                    dos.flush();
+                }
+                catch (Exception e){
+                    Log.d("BUFFREADERR","BUFFREADERR could not send stuff to " + peer_name);
+                }
 
                 Log.d("PeerConnectivity","SUCCESS: Sent Client Hello!");
 
@@ -497,25 +547,44 @@ public class PeerInteractions {
 
                 // First read Server Hello Length
 
-                byte [] server_hello_size_bytes;
+                // byte [] server_hello_size_bytes;
+                int server_hello_size;
                 try{
-                    server_hello_size_bytes = TCPhelpers.buffRead(4,dis);
+                    server_hello_size = dis.readInt();
+                    // server_hello_size_bytes = TCPhelpers.buffRead(4,dis);
                 }
-                catch (IOException e){
-                    Log.d("Peer Connectivity","Couldn't read the size of the server hello");
+                catch (Exception e){
+                    Log.d("Peer Connectivity","BUFFREADERR -> Couldn't read the size of the server hello from " + peerIP);
+                    e.printStackTrace();
                     return false;
                 }
-                int server_hello_size = TCPhelpers.byteArrayToIntBigEndian(server_hello_size_bytes);
+
+                // int server_hello_size = TCPhelpers.byteArrayToIntBigEndian(server_hello_size_bytes);
                 Log.d("Peer Connectivity","The server hello size in bytes is " + server_hello_size);
 
-                byte[] bytesServerHello;
-                bytesServerHello = TCPhelpers.buffRead(server_hello_size,dis); // fix this to get hello message before receiving so that we get the exact one
-                Log.d("Peer Connectivity","Serving Peer Hello Received");
+                byte[] bytesServerHello = null;
+                try {
+                    bytesServerHello = TCPhelpers.buffRead(server_hello_size, dis); // fix this to get hello message before receiving so that we get the exact one
+                    Log.d("Peer Connectivity", "Serving Peer Hello Received");
+                }
+                catch (Exception e){
+                    e.printStackTrace();
+                    Log.d("Peer Connectivity","BUFFREADERR -> Could not receive server hello from " + peer_name);
+                    return false;
+                }
 
                 // send acknowledgement that we have read everything
                 byte [] ClientFinishAck = "ACK".getBytes();
-                dos.write(ClientFinishAck);
-                dos.flush();
+
+                try {
+                    dos.write(ClientFinishAck);
+                    dos.flush();
+                }
+                catch (Exception e){
+                    e.printStackTrace();
+                    Log.d("Peer Connectivity","BUFFREADERR Could not send the ACK code to the remote peer to tell it that we have received its sever hello. Peer: "+peer_name);
+                    return false;
+                }
 
                 // SEPARATING THE FIELDS
                 byte [][] fieldsServerHello = new byte[4][];
@@ -613,7 +682,7 @@ public class PeerInteractions {
                 //}
                 if(NOT_OUTED_HELLO_EXEP) {
                     NOT_OUTED_HELLO_EXEP = false;
-                    Log.d("RAFRAF", "The exception should be below");
+                    Log.d("RAFRAF", "BUFFREADERR The exception should be below");
                     e.printStackTrace();
                 }
                 return false;

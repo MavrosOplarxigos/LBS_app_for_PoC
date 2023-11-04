@@ -123,6 +123,7 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
     public static int ANSWER_PROBABILITY_PCENT = 100;
     public static int NUMBER_OF_EXPERIMENTS = 0;
     public static int QUERIES_PER_EXPERIMENT = 10;
+    public static boolean SLOW_MODE_REQUESTS = false;
 
     public static Lock HIT_MISS_COUNTERS_LOCK = new ReentrantLock();
     public static int PEER_HITS = 0;
@@ -297,7 +298,12 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 new Runnable() {
                     @Override
                     public void run() {
-                        totalRequestsTV.setText("TOTAL REQUESTS: " + request + "/" + QUERIES_PER_EXPERIMENT);
+                        String SLOW_MODE_STRING = "";
+                        if (SLOW_MODE_REQUESTS){
+                            SLOW_MODE_STRING = "\n(SLOW MODE)";
+                        }
+                        totalRequestsTV.setMaxLines(2);
+                        totalRequestsTV.setText("TOTAL REQUESTS: " + request + "/" + QUERIES_PER_EXPERIMENT + SLOW_MODE_STRING);
                         totalRequestsTV.setBackgroundColor(Color.parseColor(interpolateColorToHex((double)(request)/(double)(QUERIES_PER_EXPERIMENT))));
                     }
                 }
@@ -389,6 +395,9 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 set_experiment_screen();
                 EXPERIMENT_IS_RUNNING = true;
 
+                // getting new serving nodes more often just in case that one of them gets flooded for some reason
+                P2PRelayServerInteractions.PeerDiscoveryThread.QUERY_INTERVAL_MSEC = 5 * 1000;
+
                 for(int i=0;i<number_of_experiments;i++) {
 
                     byte [] experiment_counter_bytes = TCPhelpers.buffRead(4,dis);
@@ -415,11 +424,16 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     // queries per experiment
                     byte [] queries_per_experiment_bytes = TCPhelpers.buffRead(4,dis);
 
+                    // slow-mode?
+                    byte [] slow_mode_bytes = TCPhelpers.buffRead(3,dis);
+
                     // now we should wait for the time to start the experiment
                     byte[] start_signal = TCPhelpers.buffRead(5, dis);
                     String start_signal_string = new String(start_signal, StandardCharsets.UTF_8);
                     if (!(start_signal_string.equals("START"))) {
                         Log.d("ExperimentThread", "The experiment initiation code is invalid = " + start_signal.toString());
+                        unset_experiment_screen();
+                        EXPERIMENT_IS_RUNNING = false;
                         return;
                     }
 
@@ -430,14 +444,32 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                     update_peer_miss_second_try_tv();
                     QUERIES_PER_EXPERIMENT = TCPhelpers.byteArrayToIntLittleEndian(queries_per_experiment_bytes);
                     reset_experiment_counters();
+
+                    SLOW_MODE_REQUESTS = ( (new String(slow_mode_bytes,StandardCharsets.UTF_8)).equals("YES") );
+
                     System.gc(); // Garbage collection lest this gathers the threads that we left before
-                    Thread.sleep(10000); // This is to make sure that the rest of the devices have also managed to change the variables
+                    Thread.sleep(5000); // This is to make sure that the rest of the devices have also managed to change the variables
+                    TCPServerControlClass.old_socket_cleanup();
                     System.gc();
+                    Thread.sleep(5000); // This is to make sure that the rest of the devices have also managed to change the variables
+
+                    Log.d("ExperimentThread","Finished cleanups for experiment " + i+1);
 
                     for(int request=0;request<QUERIES_PER_EXPERIMENT;request++){
 
+                        // The experiment server should tell us to start this request if and only if SLOW_MODE_REQUESTS is true
+                        if(SLOW_MODE_REQUESTS){
+                            byte [] next_request_signal = TCPhelpers.buffRead(4,dis);
+                            String next_request_signal_string = new String(next_request_signal, StandardCharsets.UTF_8);
+                            if (!(next_request_signal_string.equals("NEXT"))){
+                                Log.d("ExperimentThread","The next request code is invalid = " + next_request_signal_string);
+                                unset_experiment_screen();
+                                EXPERIMENT_IS_RUNNING = false;
+                                return;
+                            }
+                        }
+
                         Log.d("ExperimentThread","Now on request " + (request+1) );
-                        update_total_requests_tv(request+1);
                         experiment_query_completed = new CountDownLatch(1);
 
                         // for every request we are going to do what would be done if the search button where to be pressed
@@ -510,6 +542,15 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                         Log.d("ExperimentThread","Awaiting for a response from either Direct or Proxy request!");
                         experiment_query_completed.await();
                         Log.d("ExperimentThread","Indeed received countdown and await is completed!");
+
+                        // if we are in SLOW_MODE we will tell the experiment server that we have finished this query
+                        if(SLOW_MODE_REQUESTS){
+                            byte[] done_bytes = "DONE-REQUEST".getBytes();
+                            dos.write(done_bytes);
+                            dos.flush();
+                        }
+                        update_total_requests_tv(request+1);
+                        update_hit_ratio_tv();
 
                     }
 
@@ -1099,7 +1140,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                             PEER_MISSES++;
                             Log.d("Response Collection Thread","Indeed we DO count down!");
                             experiment_query_completed.countDown();
-                            update_hit_ratio_tv();
                             HIT_MISS_COUNTERS_LOCK.unlock();
                         }
                     }
@@ -1127,7 +1167,9 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                                 }
                         );
                     }
+
                     return;
+
                 }
 
                 if(!consensus){
@@ -1145,7 +1187,6 @@ public class SearchingNodeFragment extends Fragment implements OnMapReadyCallbac
                 HIT_MISS_COUNTERS_LOCK.lock();
                 PEER_HITS++;
                 experiment_query_completed.countDown();
-                update_hit_ratio_tv();
                 HIT_MISS_COUNTERS_LOCK.unlock();
 
                 // applying the result that we got from the peers

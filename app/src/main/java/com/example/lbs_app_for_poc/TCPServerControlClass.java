@@ -13,6 +13,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -22,6 +23,8 @@ import java.security.cert.CertificateEncodingException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -35,10 +38,31 @@ public class TCPServerControlClass{
 
     public static int MyServingPort; // The number of the port to listen for connection to
     public static TCPServerAcceptingThread AcceptThread;
-    public static final int max_transmission_cutoff = 300000; // 301K bytes per message exchange
+    // public static final int max_transmission_cutoff = 300000; // 301K bytes per message exchange
     public static final char transmission_del = '|';
     public static final int MAX_WAIT_QUERYING_NODE_MSEC = 60000;
+    public static final int MAX_SEND_BUFFER_SIZE = 100000;
+    public static final int MAX_RECEIVE_BUFFER_SIZE = 64000;
     public static LBSEntitiesConnectivity lbsEC = null;
+    public static Queue<Socket> to_cleanup = new LinkedList<>();
+
+    public static void old_socket_cleanup(){
+        while(!to_cleanup.isEmpty()){
+            Socket td = to_cleanup.poll();
+            if(td == null){
+                continue;
+            }
+            if(!td.isClosed()){
+                try {
+                    td.close();
+                }
+                catch (Exception e){
+                    Log.d("SocketClosing","Can't close socket that is not closed!");
+                }
+            }
+            td = null;
+        }
+    }
 
     public static void initServingPort(){
         int MIN_PORT = 56000;
@@ -57,7 +81,7 @@ public class TCPServerControlClass{
 
         public static ServerSocket serverSocket;
         public static final int WAIT_AFTER_ACCEPT_FAILURE_MSEC = 300;
-        public static final int MAX_SIMULTANEOUS_ACCEPTS = 50000;
+        public static final int MAX_SIMULTANEOUS_ACCEPTS = 2000;
 
         public TCPServerAcceptingThread(){
             try {
@@ -75,6 +99,16 @@ public class TCPServerControlClass{
             while(true){
                 try {
                     Socket s = serverSocket.accept();
+
+                    try {
+                        s.setTcpNoDelay(true); // NO - DELAY
+                        s.setSendBufferSize(MAX_SEND_BUFFER_SIZE);
+                        s.setReceiveBufferSize(MAX_RECEIVE_BUFFER_SIZE);
+                    } catch (SocketException e) {
+                        throw new RuntimeException("NEW IMPROVEMENT EFFORT" + e);
+                    }
+
+                    to_cleanup.offer(s);
                     s.setSoTimeout(MAX_WAIT_QUERYING_NODE_MSEC);
                     // spawn the thread for handling the new client querying node
                     ServingNodeQueryHandleThread neo_nima = new ServingNodeQueryHandleThread(s);

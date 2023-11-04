@@ -9,12 +9,15 @@ import java.io.DataOutputStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketException;
 import java.security.PrivateKey;
 import java.security.cert.X509Certificate;
 
 public class SigningServerInterations {
 
     public static final int SIGNING_SERVER_TIMEOUT = 60000;
+    public static final int MAX_RECEIVE_SIZE = 100000;
+    public static final int MAX_SEND_SIZE = 64000;
 
     // Using the function bellow when the peers are non existent or irresponsive
     public static byte [] DirectQuery(byte [] APICallBytesClientQuery, X509Certificate my_cert, PrivateKey my_key) throws Exception{
@@ -22,6 +25,15 @@ public class SigningServerInterations {
         Log.d("DIREC","Direct Query Function enters!");
 
         Socket s = new Socket();
+
+        try {
+            s.setReceiveBufferSize(MAX_RECEIVE_SIZE); // BUFFER INCREASE POINT
+            s.setTcpNoDelay(true); // NO - DELAY
+            s.setSendBufferSize(MAX_SEND_SIZE);
+        } catch (SocketException e) {
+            throw new RuntimeException("BUFFREADERR -> NEW IMPROVEMENT EFFORT" + e);
+        }
+
         try{
             InetAddress ssIP = TCPServerControlClass.lbsEC.ENTITIES_MANAGER_IP;
             int ssPort = TCPServerControlClass.lbsEC.SIGNING_FWD_SERVER_PORT;
@@ -196,6 +208,15 @@ public class SigningServerInterations {
         Log.d("PXQRY","Proxy Query Function enters!");
 
         Socket s = new Socket();
+
+        try {
+            s.setReceiveBufferSize(MAX_RECEIVE_SIZE); // BUFFER INCREASE POINT
+            s.setTcpNoDelay(true); // NO - DELAY
+            s.setSendBufferSize(MAX_SEND_SIZE);
+        } catch (SocketException e) {
+            throw new RuntimeException("BUFFREADERR -> NEW IMPROVEMENT EFFORT" + e);
+        }
+
         try{
             InetAddress ssIP = TCPServerControlClass.lbsEC.ENTITIES_MANAGER_IP;
             int ssPort = TCPServerControlClass.lbsEC.SIGNING_FWD_SERVER_PORT;

@@ -445,7 +445,7 @@ public class ServingNodeQueryHandleThread extends Thread {
             dos.flush();
         }
         catch (Exception e){
-            safe_exit("PARANOIA_ACCEPTING " + "We can't even accept serving!",e,s);
+            safe_exit("PARANOIA_ACCEPTING " + "BUFFREADERR We can't even accept serving!",e,s);
             return false;
         }
 
@@ -458,7 +458,7 @@ public class ServingNodeQueryHandleThread extends Thread {
             client_hello_size_bytes = TCPhelpers.buffRead(4,dis);
         }
         catch (Exception e){
-            safe_exit("Error: On receiving the querying peer hello message size",e,s);
+            safe_exit("BUFFREADERR Error: On receiving the querying peer hello message size",e,s);
             return false;
         }
 
@@ -602,11 +602,38 @@ public class ServingNodeQueryHandleThread extends Thread {
             baosServerHello.write((byte)(transmission_del));
             baosServerHello.write(cryptoTimestamp.signed_timestamp);
             byte [] ServerHello = baosServerHello.toByteArray();
-            byte [] ServerHelloSizeBytes = TCPhelpers.intToByteArray(ServerHello.length);
-            dos.write(ServerHelloSizeBytes);
-            dos.flush();
-            dos.write(ServerHello);
-            dos.flush();
+            byte [] ServerHelloSizeBytes = TCPhelpers.intToByteArray((int)(ServerHello.length));
+
+            if(ServerHelloSizeBytes.length != 4){
+                safe_exit("BUFFREADERR -> the size of the byte array that sends the server hello size is not 4!",null,s);
+                return false;
+            }
+
+            if(s.isClosed()){
+                safe_exit("BUFFREADERR -> The socket is closed prematurely!",null,s);
+                return false;
+            }
+            if(!s.isConnected()){
+                safe_exit("BUFFREADERR -> s is NOT connected why? That's weird!",null,s);
+                return false;
+            }
+            if( s.isOutputShutdown() ){
+                safe_exit("BUFFREADERR -> s output is shutdown! Why? Makes no sense.",null,s);
+                return false;
+            }
+
+            try {
+                dos.flush();
+                // dos.write(ServerHelloSizeBytes);
+                dos.writeInt(ServerHello.length); // trying this way
+                dos.flush();
+                dos.write(ServerHello);
+                dos.flush();
+            }
+            catch (Exception e){
+                safe_exit("BUFFREADERR -> Couldn't write Server Hello Messages!",e,s);
+                return false;
+            }
 
             // wait for explicit acknowledgment instead
             byte [] ClientFinishAck = TCPhelpers.buffRead(3,dis);
@@ -653,9 +680,11 @@ public class ServingNodeQueryHandleThread extends Thread {
 
     public void safe_exit(String message, Exception e, Socket s){
         Log.d("Serving Node Query Handle Thread -> Peer " + peerIP,message);
-        LoggingFragment.mutexTvdAL.lock();
-        LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Failed to serve: " + peerIP , Color.RED ) );
-        LoggingFragment.mutexTvdAL.unlock();
+        if(!SearchingNodeFragment.EXPERIMENT_IS_RUNNING) {
+            LoggingFragment.mutexTvdAL.lock();
+            LoggingFragment.tvdAL.add(new LoggingFragment.TextViewDetails("Failed to serve: " + peerIP, Color.RED));
+            LoggingFragment.mutexTvdAL.unlock();
+        }
         if(e!=null) {
             e.printStackTrace();
         }
