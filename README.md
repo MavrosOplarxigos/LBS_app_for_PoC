@@ -43,7 +43,7 @@ many of its parameters to be adjustable in real-time, therefore allowing for fut
 The core functionality of this application if we exclude the underlying cryptography that the scheme employs to achieve privacy-enhancement can be seen in the diagram below:
 
 <p align="center">
-  <img src="./core_functionality.png" alt="Core Functionality" width="600"/>
+  <img src="./core_functionality.png" alt="Core Functionality" width="900"/>
 </p>
 
 So we essentially use the [GoogleMap](https://developers.google.com/android/reference/com/google/android/gms/maps/GoogleMap) class to display search results and to define the search itself. [PlacesAPI](https://developers.google.com/maps/documentation/places/web-service/overview) is used for answering these location-defined searches.
