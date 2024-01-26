@@ -77,10 +77,10 @@ of privacy enhancement. We can see how the "Serving User" acts as a proxy betwee
 
 ## Mobile Application Architecture/Overview
 
-The UML class diagram below can visualize the dependencies between classes: 
+The UML class diagram (generated using the Code Iris plug-in) below can visualize the dependencies between classes: 
 
 <p align="center">
-  <img src="./class_diagram_code_iris.png" alt="Classes UML diagram" width="600"/>
+  <img src="./class_diagram_code_iris.png" alt="Classes UML diagram" width="900"/>
 </p>
 
 The list below briefly describes the purpose and functionality that is implemented by the each class:
