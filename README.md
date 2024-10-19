@@ -1,7 +1,7 @@
 # Secure and Privacy-enhancing Decentralized Location-based Services: LBS user mobile application 
 
 This is the implementation of the mobile application which is run by the users' devices when they
-are participating in the LBS scheme which is described in my master's degree thesis: \<DiVA link to be added soon\>
+are participating in the LBS scheme which is described in my master's degree thesis: [Google Scholar](https://scholar.google.com/scholar?q=Secure%20and%20Privacy-Enhancing%20Decentralized%20Location-based%20Services%3A%20An%20over-the-Internet%20P2P%20connectivity%20location-based%20service%2C%20leveraging%20pseudonyms%20for%20privacy%20enhancement.), [DiVA](https://www.diva-portal.org/smash/record.jsf?pid=diva2:1888238)
 
 ### LBS-owned entities
 
